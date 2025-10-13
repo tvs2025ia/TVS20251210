@@ -77,35 +77,76 @@ class IndexedDBService {
 
   async saveUser(user: User, allowedStores?: string[]): Promise<void> {
     const db = await this.ensureDB();
-    const transaction = db.transaction(['users', 'user_stores', 'syncQueue'], 'readwrite');
     
-    try {
-      // Guardar usuario
-      const usersStore = transaction.objectStore('users');
-      await this.promisifyRequest(usersStore.put(user));
-
-      // Si es empleado y tiene tiendas permitidas, guardar relaciones
-      if (user.role === 'employee' && allowedStores && allowedStores.length > 0) {
-        const userStoresStore = transaction.objectStore('user_stores');
+    return new Promise(async (resolve, reject) => {
+      try {
+        // PASO 1: Guardar usuario
+        const userTx = db.transaction(['users'], 'readwrite');
+        const usersStore = userTx.objectStore('users');
+        usersStore.put(user);
         
-        // Eliminar relaciones existentes
-        const existingStores = await this.getUserStores(user.id);
-        for (const storeId of existingStores) {
-          await this.promisifyRequest(userStoresStore.delete([user.id, storeId]));
-        }
-
-        // Agregar nuevas relaciones
-        for (const storeId of allowedStores) {
-          const userStore: UserStore = {
-            userId: user.id,
-            storeId,
-            isActive: true
-          };
-          await this.promisifyRequest(userStoresStore.put(userStore));
-        }
+        userTx.oncomplete = async () => {
+          try {
+            // PASO 2: Manejar user_stores si es empleado
+            if (user.role === 'employee' && allowedStores && allowedStores.length > 0) {
+              // Obtener tiendas existentes
+              const existingStores = await this.getUserStores(user.id);
+              
+              // Crear transacción para modificar user_stores
+              const storesTx = db.transaction(['user_stores'], 'readwrite');
+              const userStoresStore = storesTx.objectStore('user_stores');
+              
+              // Eliminar relaciones existentes
+              for (const storeId of existingStores) {
+                userStoresStore.delete([user.id, storeId]);
+              }
+              
+              // Agregar nuevas relaciones
+              for (const storeId of allowedStores) {
+                const userStore: UserStore = {
+                  userId: user.id,
+                  storeId,
+                  isActive: true
+                };
+                userStoresStore.put(userStore);
+              }
+              
+              storesTx.oncomplete = () => {
+                this.addToSyncQueue(user, allowedStores)
+                  .then(() => {
+                    console.log('✅ Usuario guardado en IndexedDB:', user.username);
+                    resolve();
+                  })
+                  .catch(reject);
+              };
+              
+              storesTx.onerror = () => reject(storesTx.error);
+            } else {
+              // No es empleado o no tiene tiendas, solo sync
+              await this.addToSyncQueue(user, allowedStores);
+              console.log('✅ Usuario guardado en IndexedDB:', user.username);
+              resolve();
+            }
+          } catch (error) {
+            reject(error);
+          }
+        };
+        
+        userTx.onerror = () => reject(userTx.error);
+      } catch (error) {
+        reject(error);
       }
-
-      // Agregar a cola de sincronización
+    });
+  }
+  
+  // Función auxiliar para agregar a la cola de sync
+  private async addToSyncQueue(user: User, allowedStores?: string[]): Promise<void> {
+    const db = await this.ensureDB();
+    
+    return new Promise((resolve, reject) => {
+      const syncTx = db.transaction(['syncQueue'], 'readwrite');
+      const syncStore = syncTx.objectStore('syncQueue');
+      
       const syncItem: SyncQueueItem = {
         id: crypto.randomUUID(),
         type: 'user',
@@ -113,14 +154,12 @@ class IndexedDBService {
         data: { user, allowedStores },
         timestamp: Date.now()
       };
-      const syncStore = transaction.objectStore('syncQueue');
-      await this.promisifyRequest(syncStore.put(syncItem));
-
-      console.log('✅ Usuario guardado en IndexedDB:', user.username);
-    } catch (error) {
-      console.error('❌ Error guardando usuario:', error);
-      throw error;
-    }
+      
+      syncStore.put(syncItem);
+      
+      syncTx.oncomplete = () => resolve();
+      syncTx.onerror = () => reject(syncTx.error);
+    });
   }
 
   async getUser(username: string, password: string): Promise<User | null> {
@@ -273,7 +312,12 @@ class IndexedDBService {
 
   // ============== UTILIDADES ==============
 
-  private promisifyRequest<T = any>(request: IDBRequest): Promise<T> {
+  private promisifyRequest<T = any>(request: IDBRequest | Promise<any>): Promise<T> {
+    // Si ya es una Promise, retornarla directamente
+    if (request instanceof Promise) {
+      return request;
+    }
+    
     return new Promise((resolve, reject) => {
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
