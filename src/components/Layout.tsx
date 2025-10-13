@@ -119,8 +119,15 @@ export function Layout({ children, currentPage, onPageChange }: LayoutProps) {
   };
 
   const handleStoreChange = (storeId: string) => {
+    // Solo admin puede cambiar de tienda desde el header
+    if (user?.role !== 'admin') {
+      console.warn('⚠️ Solo administradores pueden cambiar de tienda');
+      return;
+    }
+  
     const store = stores.find(s => s.id === storeId);
     if (store) {
+      console.log('🏪 Admin cambiando a tienda:', store.name);
       setCurrentStore(store);
     }
   };
@@ -144,12 +151,22 @@ export function Layout({ children, currentPage, onPageChange }: LayoutProps) {
       setSyncing(true);
       try {
         console.log("🔄 Iniciando sincronización completa desde Layout...");
+        
+        // Validar que haya una tienda actual
+        if (!currentStore?.id) {
+          console.warn('⚠️ No hay tienda seleccionada');
+          return;
+        }
+        
         // 1. Sincronizar datos offline → online
         await forceSyncNow();
-        // 2. Sincronizar inventarios desde Supabase
-        await ProductService.syncProductsFromSupabase();
+        
+        // 2. Sincronizar inventarios desde Supabase (pasar storeId actual)
+        await ProductService.syncProductsFromSupabase(currentStore.id);
+        
         // 3. Refrescar datos globales
         await refreshData();
+        
         console.log("✅ Sincronización completa finalizada");
       } catch (error) {
         console.error("❌ Error en sincronización:", error);
@@ -280,24 +297,38 @@ export function Layout({ children, currentPage, onPageChange }: LayoutProps) {
             </button>
 
             <div className="flex-1 flex justify-end items-center space-x-4">
-              {/* ✅ Selector de tienda disponible para todos */}
-              {stores.length > 0 && (
-                <select
-                  value={currentStore?.id || ''}
-                  onChange={(e) => handleStoreChange(e.target.value)}
-                  className="text-sm border rounded px-2 py-1"
-                >
-                  {stores.map(store => (
-                    <option key={store.id} value={store.id}>
-                      {store.name}
-                    </option>
-                  ))}
-                </select>
+              {/* ✅ Selector de tienda SOLO para admin, empleados ven tienda fija */}
+              {stores.length > 0 && user && (
+                <>
+                  {user.role === 'admin' ? (
+                    // Admin: Selector interactivo
+                    <select
+                      value={currentStore?.id || ''}
+                      onChange={(e) => handleStoreChange(e.target.value)}
+                      className="text-sm border border-gray-300 rounded px-3 py-1.5 bg-white hover:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent cursor-pointer"
+                      title="Cambiar tienda (Admin)"
+                      >
+                      {stores.map(store => (
+                        <option key={store.id} value={store.id}>
+                          {store.name}
+                          </option>
+                      ))}
+                    </select>
+                  ) : (
+                    // Empleado: Mostrar tienda actual (sin cambiar)
+                    <div className="flex items-center space-x-2 px-3 py-1.5 bg-gray-100 rounded border border-gray-300">
+                      <Store className="w-4 h-4 text-gray-500" />
+                      <span className="text-sm font-medium text-gray-700">
+                      {currentStore?.name || 'Sin tienda'}
+                      </span>
+                      </div>
+                  )}
+                </>
               )}
 
               {/* Estado de conexión + botón sync */}
               <ConnectionStatus />
-            </div>
+              </div>
           </header>
 
           <main className="flex-1 p-4 sm:p-6 lg:p-8">

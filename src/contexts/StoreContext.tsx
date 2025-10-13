@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { Store } from '../types';
 import { SupabaseService } from '../services/supabaseService';
+import { useAuth } from './AuthContext';
 
 interface StoreContextType {
   stores: Store[];
@@ -23,34 +24,6 @@ export function useStore() {
   return context;
 }
 
-// Fallback stores for when Supabase is not available
-const mockStores: Store[] = [
-  {
-    id: '11111111-1111-1111-1111-111111111111',
-    name: 'Tienda Principal',
-    address: 'Calle 123, Ciudad',
-    phone: '+57 300 123 4567',
-    email: 'principal@tienda.com',
-    isActive: true
-  },
-  {
-    id: '22222222-2222-2222-2222-222222222222',
-    name: 'Sucursal Norte',
-    address: 'Av. Norte 456, Ciudad',
-    phone: '+57 300 123 4568',
-    email: 'norte@tienda.com',
-    isActive: true
-  },
-  {
-    id: '33333333-3333-3333-3333-333333333333',
-    name: 'Sucursal Sur',
-    address: 'Av. Sur 789, Ciudad',
-    phone: '+57 300 123 4569',
-    email: 'sur@tienda.com',
-    isActive: true
-  }
-];
-
 interface StoreProviderProps {
   children: ReactNode;
 }
@@ -59,6 +32,7 @@ export function StoreProvider({ children }: StoreProviderProps) {
   const [stores, setStores] = useState<Store[]>([]);
   const [currentStore, setCurrentStoreState] = useState<Store | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const { user } = useAuth();
 
   useEffect(() => {
     loadStores();
@@ -66,11 +40,24 @@ export function StoreProvider({ children }: StoreProviderProps) {
 
   useEffect(() => {
     // Set first active store as default when stores are loaded
-    if (stores.length > 0 && !currentStore) {
+    if (stores.length > 0 && !currentStore && !user) {
       const firstActiveStore = stores.find(s => s.isActive) || stores[0];
       setCurrentStoreState(firstActiveStore);
     }
-  }, [stores]);
+  }, [stores, currentStore, user]);
+
+  // Sincronizar tienda actual con usuario logueado
+  useEffect(() => {
+    if (user?.storeId && stores.length > 0) {
+      const userStore = stores.find(s => s.id === user.storeId);
+      if (userStore) {
+        if (!currentStore || currentStore.id !== userStore.id) {
+          console.log('🏪 Estableciendo tienda del usuario:', userStore.name);
+          setCurrentStoreState(userStore);
+        }
+      }
+    }
+  }, [user?.storeId, stores, currentStore]);
 
   const loadStores = async () => {
     try {
@@ -81,15 +68,38 @@ export function StoreProvider({ children }: StoreProviderProps) {
       
       if (storesFromSupabase.length > 0) {
         setStores(storesFromSupabase);
+        localStorage.setItem('cached_stores', JSON.stringify(storesFromSupabase));
         console.log(`✅ ${storesFromSupabase.length} tiendas cargadas desde Supabase`);
       } else {
-        console.log('⚠️ No se encontraron tiendas en Supabase, usando datos mock');
-        setStores(mockStores);
+        // Intentar cargar del cache
+        const cachedStores = localStorage.getItem('cached_stores');
+        if (cachedStores) {
+          const stores = JSON.parse(cachedStores);
+          setStores(stores);
+          console.log(`✅ ${stores.length} tiendas cargadas desde cache`);
+        } else {
+          console.warn('⚠️ No hay tiendas disponibles en Supabase ni en cache');
+          setStores([]);
+        }
       }
     } catch (error) {
       console.error('❌ Error cargando tiendas desde Supabase:', error);
-      console.log('📦 Usando tiendas mock como fallback');
-      setStores(mockStores);
+      
+      // Fallback al cache si hay error
+      try {
+        const cachedStores = localStorage.getItem('cached_stores');
+        if (cachedStores) {
+          const stores = JSON.parse(cachedStores);
+          setStores(stores);
+          console.log(`✅ ${stores.length} tiendas cargadas desde cache (fallback)`);
+        } else {
+          console.error('❌ No hay tiendas disponibles');
+          setStores([]);
+        }
+      } catch (cacheError) {
+        console.error('Error cargando cache:', cacheError);
+        setStores([]);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -104,11 +114,12 @@ export function StoreProvider({ children }: StoreProviderProps) {
     try {
       console.log('🏪 Creando nueva tienda:', store.name);
       
-      // Save to Supabase first
       const savedStore = await SupabaseService.saveStore(store);
-      
-      // Update local state
       setStores(prevStores => [...prevStores, savedStore]);
+      
+      // Actualizar cache
+      const updatedStores = [...stores, savedStore];
+      localStorage.setItem('cached_stores', JSON.stringify(updatedStores));
       
       console.log('✅ Tienda creada exitosamente:', savedStore.name);
     } catch (error) {
@@ -121,15 +132,15 @@ export function StoreProvider({ children }: StoreProviderProps) {
     try {
       console.log('🏪 Actualizando tienda:', store.name);
       
-      // Save to Supabase first
       const savedStore = await SupabaseService.saveStore(store);
-      
-      // Update local state
       setStores(prevStores => 
         prevStores.map(s => s.id === savedStore.id ? savedStore : s)
       );
       
-      // Update current store if it's the one being updated
+      // Actualizar cache
+      const updatedStores = stores.map(s => s.id === savedStore.id ? savedStore : s);
+      localStorage.setItem('cached_stores', JSON.stringify(updatedStores));
+      
       if (currentStore?.id === savedStore.id) {
         setCurrentStoreState(savedStore);
       }
@@ -146,15 +157,15 @@ export function StoreProvider({ children }: StoreProviderProps) {
       const storeToDelete = stores.find(s => s.id === id);
       console.log('🏪 Desactivando tienda:', storeToDelete?.name);
       
-      // Deactivate in Supabase
       await SupabaseService.deleteStore(id);
-      
-      // Update local state
       setStores(prevStores => 
         prevStores.map(s => s.id === id ? { ...s, isActive: false } : s)
       );
       
-      // If current store was deleted, switch to first available store
+      // Actualizar cache
+      const updatedStores = stores.map(s => s.id === id ? { ...s, isActive: false } : s);
+      localStorage.setItem('cached_stores', JSON.stringify(updatedStores));
+      
       if (currentStore?.id === id) {
         const activeStores = stores.filter(s => s.isActive && s.id !== id);
         if (activeStores.length > 0) {

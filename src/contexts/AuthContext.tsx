@@ -25,28 +25,6 @@ export function useAuth() {
   return context;
 }
 
-// Mock users solo como fallback de emergencia
-const mockUsers: User[] = [
-  {
-    id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
-    username: 'admin',
-    email: 'admin@tienda.com',
-    role: 'admin',
-    storeId: '11111111-1111-1111-1111-111111111111',
-    createdAt: new Date(),
-    isActive: true
-  },
-  {
-    id: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
-    username: 'empleado1',
-    email: 'empleado1@tienda.com',
-    role: 'employee',
-    storeId: '11111111-1111-1111-1111-111111111111',
-    createdAt: new Date(),
-    isActive: true
-  }
-];
-
 interface AuthProviderProps {
   children: ReactNode;
 }
@@ -131,10 +109,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
     try {
       setIsLoading(true);
       console.log('🔑 Intentando login:', { username, storeId });
-
+  
       let authenticatedUser: User | null = null;
       let userAllowedStores: string[] = [];
-
+  
       // 1. Intentar autenticación con Supabase (PRIORIDAD)
       try {
         console.log('🌐 Intentando autenticación online...');
@@ -143,25 +121,23 @@ export function AuthProvider({ children }: AuthProviderProps) {
           password,
           storeId
         );
-
+  
         if (authenticatedUser) {
           // Obtener tiendas permitidas
           if (authenticatedUser.role === 'admin') {
-            // Admin tiene acceso a todas las tiendas
             const allStores = await SupabaseService.getAllStores();
             userAllowedStores = allStores.map(s => s.id);
           } else {
-            // Empleado: obtener tiendas asignadas
             userAllowedStores = await SupabaseService.getUserStores(authenticatedUser.id);
           }
-
-          // Verificar que tenga acceso a la tienda seleccionada
+  
+          // Verificar acceso a la tienda seleccionada
           if (authenticatedUser.role === 'employee' && 
               !userAllowedStores.includes(storeId)) {
             console.log('❌ Usuario no tiene acceso a esta tienda');
             return false;
           }
-
+  
           // Guardar en IndexedDB para offline
           await indexedDBService.saveUser(authenticatedUser, userAllowedStores);
           
@@ -170,64 +146,61 @@ export function AuthProvider({ children }: AuthProviderProps) {
       } catch (onlineError) {
         console.warn('⚠️ Error en autenticación online:', onlineError);
       }
-
+  
       // 2. Si falló online, intentar IndexedDB (FALLBACK OFFLINE)
       if (!authenticatedUser) {
         console.log('💾 Intentando autenticación offline...');
         authenticatedUser = await indexedDBService.getUser(username, password);
-
+  
         if (authenticatedUser) {
           if (authenticatedUser.role === 'admin') {
-            // Admin: todas las tiendas (usar cache local)
-            userAllowedStores = ['11111111-1111-1111-1111-111111111111']; // Fallback
+            // Admin: cargar todas las tiendas del cache
+            try {
+              const cachedStores = localStorage.getItem('cached_stores');
+              if (cachedStores) {
+                const stores = JSON.parse(cachedStores);
+                userAllowedStores = stores.map((s: any) => s.id);
+              }
+            } catch (e) {
+              console.warn('Error cargando tiendas del cache:', e);
+              userAllowedStores = [];
+            }
           } else {
             // Empleado: obtener de IndexedDB
             userAllowedStores = await indexedDBService.getUserStores(authenticatedUser.id);
           }
-
+  
           // Verificar acceso a tienda seleccionada
           if (authenticatedUser.role === 'employee' && 
               !userAllowedStores.includes(storeId)) {
             console.log('❌ Usuario no tiene acceso a esta tienda (offline)');
             return false;
           }
-
+  
           console.log('✅ Login offline exitoso');
         }
       }
-
-      // 3. Último recurso: usuarios mock (solo desarrollo)
-      if (!authenticatedUser && password === '123456') {
-        console.log('🔧 Usando usuarios mock (desarrollo)');
-        const mockUser = mockUsers.find(u => u.username === username);
-        if (mockUser) {
-          authenticatedUser = { ...mockUser, storeId };
-          userAllowedStores = mockUser.role === 'admin' 
-            ? ['11111111-1111-1111-1111-111111111111', '22222222-2222-2222-2222-222222222222']
-            : [mockUser.storeId];
-        }
-      }
-
+  
       // Validación final
       if (!authenticatedUser) {
         console.log('❌ Credenciales incorrectas');
         return false;
       }
-
-      // Actualizar estado
+  
+      // Actualizar estado con la tienda seleccionada
       const userWithStore = { ...authenticatedUser, storeId };
       setUser(userWithStore);
       setAllowedStores(userAllowedStores);
       persistSession(userWithStore, userAllowedStores);
       await updateLastLogin(userWithStore.id);
-
+  
       console.log('✅ Login completado:', {
         user: userWithStore.username,
         role: userWithStore.role,
         storeId: userWithStore.storeId,
         allowedStores: userAllowedStores
       });
-
+  
       return true;
     } catch (error) {
       console.error('❌ Error en login:', error);
