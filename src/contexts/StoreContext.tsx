@@ -46,18 +46,20 @@ export function StoreProvider({ children }: StoreProviderProps) {
     }
   }, [stores, currentStore, user]);
 
-  // Sincronizar tienda actual con usuario logueado
-  useEffect(() => {
-    if (user?.storeId && stores.length > 0) {
-      const userStore = stores.find(s => s.id === user.storeId);
-      if (userStore) {
-        if (!currentStore || currentStore.id !== userStore.id) {
-          console.log('🏪 Estableciendo tienda del usuario:', userStore.name);
-          setCurrentStoreState(userStore);
-        }
+  // Sincronizar tienda actual con usuario logueado (excepto admin)
+useEffect(() => {
+  if (user?.role === 'admin') return; // 👈 evitar sobrescribir al admin
+
+  if (user?.storeId && stores.length > 0) {
+    const userStore = stores.find(s => s.id === user.storeId);
+    if (userStore) {
+      if (!currentStore || currentStore.id !== userStore.id) {
+        console.log('🏪 Estableciendo tienda del usuario:', userStore.name);
+        setCurrentStoreState(userStore);
       }
     }
-  }, [user?.storeId, stores, currentStore]);
+  }
+}, [user?.storeId, stores, currentStore]);
 
   const loadStores = async () => {
     try {
