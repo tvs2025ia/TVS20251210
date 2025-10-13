@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useData } from '../contexts/DataContext';
 import { useStore } from '../contexts/StoreContext';
 import { useAuth } from '../contexts/AuthContext';
+import { indexedDBService } from '../services/indexedDBService';
 import { SupabaseService } from '../services/supabaseService';
 import { User, Store, PaymentMethod, ReceiptTemplate, Supplier } from '../types';
 import { 
@@ -65,35 +66,86 @@ export function Admin() {
   const UserModal = ({ user, onClose, onSave }: {
     user?: User;
     onClose: () => void;
-    onSave: (user: User) => void;
+    onSave: (user: User, allowedStores?: string[]) => void;
   }) => {
     const [formData, setFormData] = useState({
       username: user?.username || '',
       email: user?.email || '',
-      password: '', // Nueva contraseña
+      password: '',
       role: user?.role || 'employee' as 'admin' | 'employee',
-      storeId: user?.storeId || stores[0]?.id || '',
+      storeId: user?.storeId || stores[0]?.id || '', // Tienda principal
       isActive: user?.isActive ?? true
     });
+    
+    // ✅ NUEVO: Estado para tiendas permitidas (multi-selección)
+    const [selectedStores, setSelectedStores] = useState<string[]>([]);
     const [showPassword, setShowPassword] = useState(false);
     const [saving, setSaving] = useState(false);
-
+  
+    // ✅ Cargar tiendas permitidas al editar
+    useEffect(() => {
+      const loadAllowedStores = async () => {
+        if (user && user.role === 'employee') {
+          try {
+            // Intentar cargar desde Supabase primero
+            const stores = await SupabaseService.getUserStores(user.id);
+            if (stores.length > 0) {
+              setSelectedStores(stores);
+            } else {
+              // Fallback: usar storeId actual
+              setSelectedStores([user.storeId]);
+            }
+          } catch (error) {
+            console.warn('Error cargando tiendas del usuario:', error);
+            setSelectedStores([user.storeId]);
+          }
+        }
+      };
+  
+      loadAllowedStores();
+    }, [user]);
+  
+    // ✅ Toggle selección de tienda
+    const toggleStoreSelection = (storeId: string) => {
+      setSelectedStores(prev => {
+        if (prev.includes(storeId)) {
+          return prev.filter(id => id !== storeId);
+        } else {
+          return [...prev, storeId];
+        }
+      });
+    };
+  
     const handleSubmit = async (e: React.FormEvent) => {
       e.preventDefault();
       
-      if (!formData.username || !formData.email || !formData.storeId) {
+      if (!formData.username || !formData.email) {
         alert('Por favor completa todos los campos requeridos');
         return;
       }
-
-      // Para nuevos usuarios, la contraseña es requerida
+  
+      // Contraseña requerida solo para nuevos usuarios
       if (!user && !formData.password) {
         alert('La contraseña es requerida para nuevos usuarios');
         return;
       }
-
+  
+      // ✅ Validar que empleados tengan al menos una tienda
+      if (formData.role === 'employee') {
+        if (selectedStores.length === 0) {
+          alert('Debes asignar al menos una tienda al empleado');
+          return;
+        }
+        
+        // Validar que storeId esté en las tiendas seleccionadas
+        if (!selectedStores.includes(formData.storeId)) {
+          alert('La tienda principal debe estar en las tiendas permitidas');
+          return;
+        }
+      }
+  
       setSaving(true);
-
+  
       try {
         const userData: User = {
           id: user?.id || crypto.randomUUID(),
@@ -104,11 +156,14 @@ export function Admin() {
           isActive: formData.isActive,
           createdAt: user?.createdAt || new Date(),
           lastLogin: user?.lastLogin,
-          // ✅ Solo incluir hash de contraseña si se proporcionó una nueva
-          passwordHash: formData.password ? SupabaseService.hashPassword(formData.password) : user?.passwordHash
+          passwordHash: formData.password 
+            ? SupabaseService.hashPassword(formData.password) 
+            : user?.passwordHash
         };
-
-        onSave(userData);
+  
+        // ✅ Pasar tiendas permitidas solo para empleados
+        const allowedStores = formData.role === 'employee' ? selectedStores : undefined;
+        onSave(userData, allowedStores);
         onClose();
       } catch (error) {
         alert('Error guardando usuario: ' + (error instanceof Error ? error.message : 'Error desconocido'));
@@ -116,10 +171,10 @@ export function Admin() {
         setSaving(false);
       }
     };
-
+  
     return (
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-        <div className="bg-white rounded-xl max-w-md w-full">
+        <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
           <div className="p-6">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-xl font-bold text-gray-900">
@@ -129,35 +184,36 @@ export function Admin() {
                 <X className="w-6 h-6" />
               </button>
             </div>
-
+  
             <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Nombre de Usuario *
-                </label>
-                <input
-                  type="text"
-                  value={formData.username}
-                  onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  required
-                />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Nombre de Usuario *
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.username}
+                    onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    required
+                  />
+                </div>
+  
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Email *
+                  </label>
+                  <input
+                    type="email"
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    required
+                  />
+                </div>
               </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Email *
-                </label>
-                <input
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  required
-                />
-              </div>
-
-              {/* ✅ Campo de contraseña */}
+  
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   {user ? 'Nueva Contraseña (opcional)' : 'Contraseña *'}
@@ -179,45 +235,97 @@ export function Admin() {
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
-                {!user && (
-                  <p className="text-xs text-gray-500 mt-1">
-                    Mínimo 6 caracteres. El usuario podrá cambiarla después.
+              </div>
+  
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Rol *
+                  </label>
+                  <select
+                    value={formData.role}
+                    onChange={(e) => setFormData({ ...formData, role: e.target.value as 'admin' | 'employee' })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    required
+                  >
+                    <option value="employee">Empleado</option>
+                    <option value="admin">Administrador</option>
+                  </select>
+                </div>
+  
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Tienda Principal *
+                  </label>
+                  <select
+                    value={formData.storeId}
+                    onChange={(e) => setFormData({ ...formData, storeId: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    required
+                  >
+                    <option value="">Selecciona una tienda</option>
+                    {stores.filter(s => s.isActive).map(store => (
+                      <option key={store.id} value={store.id}>{store.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+  
+              {/* ✅ NUEVO: Selección múltiple de tiendas para empleados */}
+              {formData.role === 'employee' && (
+                <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+                  <label className="block text-sm font-medium text-gray-700 mb-3">
+                    <Users className="w-4 h-4 inline mr-2" />
+                    Tiendas Permitidas *
+                  </label>
+                  <p className="text-xs text-gray-500 mb-3">
+                    Selecciona todas las tiendas a las que este empleado puede acceder
                   </p>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Rol *
-                </label>
-                <select
-                  value={formData.role}
-                  onChange={(e) => setFormData({ ...formData, role: e.target.value as 'admin' | 'employee' })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  required
-                >
-                  <option value="employee">Empleado</option>
-                  <option value="admin">Administrador</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Tienda *
-                </label>
-                <select
-                  value={formData.storeId}
-                  onChange={(e) => setFormData({ ...formData, storeId: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  required
-                >
-                  <option value="">Selecciona una tienda</option>
-                  {stores.filter(s => s.isActive).map(store => (
-                    <option key={store.id} value={store.id}>{store.name}</option>
-                  ))}
-                </select>
-              </div>
-
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-40 overflow-y-auto">
+                    {stores.filter(s => s.isActive).map(store => (
+                      <label
+                        key={store.id}
+                        className="flex items-center space-x-2 p-2 hover:bg-white rounded cursor-pointer transition-colors"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedStores.includes(store.id)}
+                          onChange={() => toggleStoreSelection(store.id)}
+                          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                        />
+                        <span className="text-sm text-gray-700">{store.name}</span>
+                        {formData.storeId === store.id && (
+                          <span className="text-xs text-blue-600 font-medium">(Principal)</span>
+                        )}
+                      </label>
+                    ))}
+                  </div>
+  
+                  {selectedStores.length === 0 && (
+                    <div className="mt-2 flex items-center text-orange-600 text-xs">
+                      <AlertCircle className="w-3 h-3 mr-1" />
+                      Debes seleccionar al menos una tienda
+                    </div>
+                  )}
+                </div>
+              )}
+  
+              {/* ✅ Mensaje informativo para admin */}
+              {formData.role === 'admin' && (
+                <div className="border border-blue-200 rounded-lg p-4 bg-blue-50">
+                  <div className="flex items-center text-blue-800">
+                    <Shield className="w-5 h-5 mr-2" />
+                    <div>
+                      <p className="font-medium text-sm">Acceso Administrativo</p>
+                      <p className="text-xs mt-1">
+                        Los administradores tienen acceso a todas las tiendas del sistema
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+  
               <div className="flex items-center">
                 <input
                   type="checkbox"
@@ -230,8 +338,8 @@ export function Admin() {
                   Usuario activo
                 </label>
               </div>
-
-              <div className="flex space-x-3 pt-4">
+  
+              <div className="flex space-x-3 pt-4 border-t">
                 <button
                   type="button"
                   onClick={onClose}
@@ -253,6 +361,35 @@ export function Admin() {
         </div>
       </div>
     );
+  };
+  
+  // ✅ Actualizar las funciones de guardado en Admin.tsx
+  
+  const handleSaveUser = async (user: User, allowedStores?: string[]) => {
+    try {
+      // Guardar usuario en Supabase
+      await SupabaseService.saveUser(user);
+      
+      // Si es empleado, actualizar sus tiendas permitidas
+      if (user.role === 'employee' && allowedStores) {
+        await SupabaseService.updateUserStores(user.id, allowedStores);
+      }
+      
+      // Guardar en IndexedDB para offline
+      await indexedDBService.saveUser(user, allowedStores);
+      
+      // Actualizar contexto local
+      if (editingUser) {
+        updateUser(user);
+      } else {
+        addUser(user);
+      }
+      
+      alert('Usuario guardado exitosamente');
+    } catch (error) {
+      console.error('Error guardando usuario:', error);
+      alert('Error guardando usuario: ' + (error instanceof Error ? error.message : 'Error desconocido'));
+    }
   };
 
   // ✅ Función para eliminar usuario con confirmación
@@ -1168,19 +1305,43 @@ export function Admin() {
 
       {/* ✅ Modales */}
       {showUserModal && (
-        <UserModal
-          onClose={() => setShowUserModal(false)}
-          onSave={(user) => addUser(user)}
-        />
-      )}
+  <UserModal
+    onClose={() => setShowUserModal(false)}
+    onSave={async (user, allowedStores) => {
+      try {
+        await SupabaseService.saveUser(user);
+        if (user.role === 'employee' && allowedStores) {
+          await SupabaseService.updateUserStores(user.id, allowedStores);
+        }
+        await indexedDBService.saveUser(user, allowedStores);
+        addUser(user);
+        alert('Usuario creado exitosamente');
+      } catch (error) {
+        alert('Error: ' + (error instanceof Error ? error.message : 'Error desconocido'));
+      }
+    }}
+  />
+)}
 
-      {editingUser && (
-        <UserModal
-          user={editingUser}
-          onClose={() => setEditingUser(null)}
-          onSave={(user) => updateUser(user)}
-        />
-      )}
+{editingUser && (
+  <UserModal
+    user={editingUser}
+    onClose={() => setEditingUser(null)}
+    onSave={async (user, allowedStores) => {
+      try {
+        await SupabaseService.saveUser(user);
+        if (user.role === 'employee' && allowedStores) {
+          await SupabaseService.updateUserStores(user.id, allowedStores);
+        }
+        await indexedDBService.saveUser(user, allowedStores);
+        updateUser(user);
+        alert('Usuario actualizado exitosamente');
+      } catch (error) {
+        alert('Error: ' + (error instanceof Error ? error.message : 'Error desconocido'));
+      }
+    }}
+  />
+)}
 
       {showStoreModal && (
         <StoreModal

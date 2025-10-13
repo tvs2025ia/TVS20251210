@@ -1,15 +1,18 @@
+// src/contexts/AuthContext.tsx - VERSION MULTI-TIENDA
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { User } from '../types';
 import { SupabaseService } from '../services/supabaseService';
+import { indexedDBService } from '../services/indexedDBService';
 
 interface AuthContextType {
   user: User | null;
-  login: (username: string, password: string, storeId?: string) => Promise<boolean>;
+  login: (username: string, password: string, storeId: string) => Promise<boolean>;
   logout: () => void;
   isLoading: boolean;
   canAccessStore: (storeId: string) => boolean;
   switchStore: (storeId: string) => boolean;
   updateLastLogin: (userId: string) => Promise<void>;
+  getAllowedStores: () => Promise<string[]>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -22,7 +25,7 @@ export function useAuth() {
   return context;
 }
 
-// Mock users for demo (fallback when no users in database)
+// Mock users solo como fallback de emergencia
 const mockUsers: User[] = [
   {
     id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
@@ -41,15 +44,6 @@ const mockUsers: User[] = [
     storeId: '11111111-1111-1111-1111-111111111111',
     createdAt: new Date(),
     isActive: true
-  },
-  {
-    id: 'cccccccc-cccc-cccc-cccc-cccccccccccc',
-    username: 'empleado2',
-    email: 'empleado2@tienda.com',
-    role: 'employee',
-    storeId: '22222222-2222-2222-2222-222222222222',
-    createdAt: new Date(),
-    isActive: true
   }
 ];
 
@@ -60,167 +54,181 @@ interface AuthProviderProps {
 export function AuthProvider({ children }: AuthProviderProps) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [allUsers, setAllUsers] = useState<User[]>([]);
+  const [allowedStores, setAllowedStores] = useState<string[]>([]);
 
-  // ✅ Cargar sesión persistida al inicializar
+  // ============== INICIALIZACIÓN ==============
+  
   useEffect(() => {
-    const loadPersistedSession = async () => {
+    const initialize = async () => {
       try {
-        const savedSession = localStorage.getItem('pos_user_session');
-        if (savedSession) {
-          const sessionData = JSON.parse(savedSession);
-          
-          // Verificar que la sesión no haya expirado (24 horas)
-          const sessionAge = Date.now() - sessionData.timestamp;
-          const maxAge = 24 * 60 * 60 * 1000; // 24 horas
-          
-          if (sessionAge < maxAge) {
-            console.log('🔄 Restaurando sesión persistida:', sessionData.user.username);
-            setUser(sessionData.user);
-            
-            // Actualizar último login
-            await updateLastLogin(sessionData.user.id);
-          } else {
-            console.log('⏰ Sesión expirada, eliminando...');
-            localStorage.removeItem('pos_user_session');
-          }
-        }
+        // Inicializar IndexedDB
+        await indexedDBService.init();
+        console.log('✅ IndexedDB inicializado');
+
+        // Intentar restaurar sesión
+        await loadPersistedSession();
       } catch (error) {
-        console.error('Error restaurando sesión:', error);
-        localStorage.removeItem('pos_user_session');
+        console.error('Error inicializando:', error);
       } finally {
         setIsLoading(false);
       }
     };
 
-    loadPersistedSession();
+    initialize();
   }, []);
 
-  // Load users from localStorage and Supabase
-  useEffect(() => {
-    const loadUsers = async () => {
-      if (user) return; // No cargar usuarios si ya hay sesión activa
-      
-      try {
-        // Load from localStorage first
-        const localUsers = localStorage.getItem('cached_users');
-        if (localUsers) {
-          const parsedUsers = JSON.parse(localUsers);
-          setAllUsers([...mockUsers, ...parsedUsers]);
-        } else {
-          setAllUsers(mockUsers);
-        }
+  // ============== GESTIÓN DE SESIÓN ==============
 
-        // Try to load from Supabase if online
-        try {
-          const { SupabaseService } = await import('../services/supabaseService');
-          const supabaseUsers = await SupabaseService.getAllUsers();
-          if (supabaseUsers.length > 0) {
-            setAllUsers([...mockUsers, ...supabaseUsers]);
-            localStorage.setItem('cached_users', JSON.stringify(supabaseUsers));
-          }
-        } catch (error) {
-          console.warn('No se pudieron cargar usuarios desde Supabase:', error);
-        }
-
-      } catch (error) {
-        console.error('Error cargando usuarios:', error);
-        setAllUsers(mockUsers);
-      }
-    };
-
-    if (!isLoading) {
-      loadUsers();
-    }
-  }, [isLoading, user]);
-
-  // ✅ Función para actualizar último login
-  const updateLastLogin = async (userId: string) => {
+  const loadPersistedSession = async () => {
     try {
-      await SupabaseService.updateUserLastLogin(userId);
+      const savedSession = localStorage.getItem('pos_user_session');
+      if (!savedSession) return;
+
+      const sessionData = JSON.parse(savedSession);
+      
+      // Verificar que la sesión no haya expirado (24 horas)
+      const sessionAge = Date.now() - sessionData.timestamp;
+      const maxAge = 24 * 60 * 60 * 1000;
+      
+      if (sessionAge >= maxAge) {
+        console.log('⏰ Sesión expirada');
+        localStorage.removeItem('pos_user_session');
+        return;
+      }
+
+      console.log('🔄 Restaurando sesión:', sessionData.user.username);
+      setUser(sessionData.user);
+      setAllowedStores(sessionData.allowedStores || []);
+      
+      await updateLastLogin(sessionData.user.id);
     } catch (error) {
-      console.warn('Error actualizando último login:', error);
+      console.error('Error restaurando sesión:', error);
+      localStorage.removeItem('pos_user_session');
     }
   };
 
-  // ✅ Función para persistir sesión
-  const persistSession = (userData: User) => {
+  const persistSession = (userData: User, stores: string[]) => {
     try {
       const sessionData = {
         user: userData,
+        allowedStores: stores,
         timestamp: Date.now()
       };
       localStorage.setItem('pos_user_session', JSON.stringify(sessionData));
-      console.log('💾 Sesión persistida para:', userData.username);
+      console.log('💾 Sesión persistida');
     } catch (error) {
       console.error('Error persistiendo sesión:', error);
     }
   };
-  const login = async (username: string, password: string, storeId?: string): Promise<boolean> => {
+
+  // ============== AUTENTICACIÓN ==============
+
+  const login = async (
+    username: string, 
+    password: string, 
+    storeId: string
+  ): Promise<boolean> => {
     try {
       setIsLoading(true);
-      console.log('🔑 Intentando login...', { username, storeId });
-      
-      // ✅ Intentar autenticación con Supabase primero
+      console.log('🔑 Intentando login:', { username, storeId });
+
+      let authenticatedUser: User | null = null;
+      let userAllowedStores: string[] = [];
+
+      // 1. Intentar autenticación con Supabase (PRIORIDAD)
       try {
-        const authenticatedUser = await SupabaseService.authenticateUser(username, password);
+        console.log('🌐 Intentando autenticación online...');
+        authenticatedUser = await SupabaseService.authenticateUserMultiStore(
+          username,
+          password,
+          storeId
+        );
+
         if (authenticatedUser) {
-          // Verificar acceso a la tienda para empleados
-          if (authenticatedUser.role === 'employee' && authenticatedUser.storeId !== storeId) {
-            console.log('❌ Empleado no tiene acceso a esta tienda');
+          // Obtener tiendas permitidas
+          if (authenticatedUser.role === 'admin') {
+            // Admin tiene acceso a todas las tiendas
+            const allStores = await SupabaseService.getAllStores();
+            userAllowedStores = allStores.map(s => s.id);
+          } else {
+            // Empleado: obtener tiendas asignadas
+            userAllowedStores = await SupabaseService.getUserStores(authenticatedUser.id);
+          }
+
+          // Verificar que tenga acceso a la tienda seleccionada
+          if (authenticatedUser.role === 'employee' && 
+              !userAllowedStores.includes(storeId)) {
+            console.log('❌ Usuario no tiene acceso a esta tienda');
             return false;
           }
+
+          // Guardar en IndexedDB para offline
+          await indexedDBService.saveUser(authenticatedUser, userAllowedStores);
           
-          // Para admin, permitir cualquier tienda
-          const userWithStore = {
-            ...authenticatedUser,
-            storeId: storeId || authenticatedUser.storeId
-          };
-          
-          setUser(userWithStore);
-          persistSession(userWithStore);
-          await updateLastLogin(userWithStore.id);
-          
-          console.log('✅ Login exitoso con Supabase:', { 
-            userId: userWithStore.id, 
-            storeId: userWithStore.storeId 
-          });
-          
-          return true;
+          console.log('✅ Login online exitoso');
         }
-      } catch (supabaseError) {
-        console.warn('Error autenticando con Supabase, usando fallback:', supabaseError);
+      } catch (onlineError) {
+        console.warn('⚠️ Error en autenticación online:', onlineError);
       }
-      
-      // ✅ Fallback a usuarios mock/locales
-      const foundUser = allUsers.find(u => 
-        u.username === username && u.isActive
-      );
-      
-      if (foundUser && password === '123456') {
-        if (foundUser.role === 'employee' && foundUser.storeId !== storeId) {
-          console.log('❌ Empleado no tiene acceso a esta tienda');
-          return false;
+
+      // 2. Si falló online, intentar IndexedDB (FALLBACK OFFLINE)
+      if (!authenticatedUser) {
+        console.log('💾 Intentando autenticación offline...');
+        authenticatedUser = await indexedDBService.getUser(username, password);
+
+        if (authenticatedUser) {
+          if (authenticatedUser.role === 'admin') {
+            // Admin: todas las tiendas (usar cache local)
+            userAllowedStores = ['11111111-1111-1111-1111-111111111111']; // Fallback
+          } else {
+            // Empleado: obtener de IndexedDB
+            userAllowedStores = await indexedDBService.getUserStores(authenticatedUser.id);
+          }
+
+          // Verificar acceso a tienda seleccionada
+          if (authenticatedUser.role === 'employee' && 
+              !userAllowedStores.includes(storeId)) {
+            console.log('❌ Usuario no tiene acceso a esta tienda (offline)');
+            return false;
+          }
+
+          console.log('✅ Login offline exitoso');
         }
-        
-        const userWithStore = {
-          ...foundUser,
-          storeId: storeId || foundUser.storeId
-        };
-        
-        setUser(userWithStore);
-        persistSession(userWithStore);
-        
-        console.log('✅ Login exitoso con datos locales:', { 
-          userId: userWithStore.id, 
-          storeId: userWithStore.storeId 
-        });
-        
-        return true;
       }
-      
-      console.log('❌ Credenciales incorrectas');
-      return false;
+
+      // 3. Último recurso: usuarios mock (solo desarrollo)
+      if (!authenticatedUser && password === '123456') {
+        console.log('🔧 Usando usuarios mock (desarrollo)');
+        const mockUser = mockUsers.find(u => u.username === username);
+        if (mockUser) {
+          authenticatedUser = { ...mockUser, storeId };
+          userAllowedStores = mockUser.role === 'admin' 
+            ? ['11111111-1111-1111-1111-111111111111', '22222222-2222-2222-2222-222222222222']
+            : [mockUser.storeId];
+        }
+      }
+
+      // Validación final
+      if (!authenticatedUser) {
+        console.log('❌ Credenciales incorrectas');
+        return false;
+      }
+
+      // Actualizar estado
+      const userWithStore = { ...authenticatedUser, storeId };
+      setUser(userWithStore);
+      setAllowedStores(userAllowedStores);
+      persistSession(userWithStore, userAllowedStores);
+      await updateLastLogin(userWithStore.id);
+
+      console.log('✅ Login completado:', {
+        user: userWithStore.username,
+        role: userWithStore.role,
+        storeId: userWithStore.storeId,
+        allowedStores: userAllowedStores
+      });
+
+      return true;
     } catch (error) {
       console.error('❌ Error en login:', error);
       return false;
@@ -229,37 +237,59 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   };
 
+  // ============== CONTROL DE ACCESO ==============
+
   const canAccessStore = (storeId: string): boolean => {
     if (!user) return false;
     if (user.role === 'admin') return true;
-    return user.storeId === storeId;
+    return allowedStores.includes(storeId);
   };
 
   const switchStore = (storeId: string): boolean => {
     if (!user) return false;
     
+    // Admin puede cambiar a cualquier tienda
     if (user.role === 'admin') {
-      console.log('🏪 Admin cambiando de tienda:', { 
-        from: user.storeId, 
-        to: storeId 
-      });
-      setUser(prev => prev ? { ...prev, storeId } : null);
+      console.log('🏪 Admin cambiando de tienda:', { from: user.storeId, to: storeId });
+      const updatedUser = { ...user, storeId };
+      setUser(updatedUser);
+      persistSession(updatedUser, allowedStores);
       return true;
     }
     
-    // Los empleados no pueden cambiar de tienda
-    if (user.storeId !== storeId) {
-      console.log('❌ Empleado no puede cambiar de tienda');
+    // Empleados solo pueden acceder a sus tiendas asignadas
+    if (!allowedStores.includes(storeId)) {
+      console.log('❌ Empleado no tiene acceso a esta tienda');
       return false;
     }
     
+    console.log('🏪 Empleado cambiando de tienda:', { from: user.storeId, to: storeId });
+    const updatedUser = { ...user, storeId };
+    setUser(updatedUser);
+    persistSession(updatedUser, allowedStores);
     return true;
   };
 
+  const getAllowedStores = async (): Promise<string[]> => {
+    if (!user) return [];
+    return allowedStores;
+  };
+
+  // ============== UTILIDADES ==============
+
+  const updateLastLogin = async (userId: string) => {
+    try {
+      await SupabaseService.updateUserLastLogin(userId);
+    } catch (error) {
+      console.warn('Error actualizando último login:', error);
+    }
+  };
+
   const logout = () => {
-    console.log('👋 Cerrando sesión...');
+    console.log('👋 Cerrando sesión');
     localStorage.removeItem('pos_user_session');
     setUser(null);
+    setAllowedStores([]);
   };
 
   const value = {
@@ -269,7 +299,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
     isLoading,
     canAccessStore,
     switchStore,
-    updateLastLogin
+    updateLastLogin,
+    getAllowedStores
   };
 
   return (

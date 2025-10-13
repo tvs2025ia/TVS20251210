@@ -1,8 +1,8 @@
 import { supabase } from '../lib/supabase';
 import {
-  Product, Sale, Customer, Expense, Quote, Purchase, PurchasePayment,
-  User, Supplier, CashRegister, CashMovement,
-  ReceiptTemplate, Layaway, LayawayPayment, PaymentMethod, Store
+  Product, Sale, Customer, Expense, Purchase, PurchasePayment,
+  User, Supplier, CashRegister,
+  ReceiptTemplate, Layaway, LayawayPayment, LayawayItem, PaymentMethod, Store
 } from '../types';
 
 export class SupabaseService {
@@ -522,15 +522,16 @@ export class SupabaseService {
     return {
       id: data.id,
       storeId: data.store_id,
-      openedAt: new Date(data.opened_at),
-      closedAt: data.closed_at ? new Date(data.closed_at) : undefined,
+      employeeId: data.employee_id,
+      closingEmployeeId: data.closing_employee_id,
       openingAmount: data.opening_amount,
       closingAmount: data.closing_amount,
-      totalSales: data.total_sales,
-      totalExpenses: data.total_expenses,
-      employeeId: data.employee_id,
-      notes: data.notes,
-      isClosed: !!data.is_closed
+      expectedAmount: data.expected_amount,
+      difference: data.difference,
+      expensesTurno: data.expenses_turno,
+      openedAt: new Date(data.opened_at),
+      closedAt: data.closed_at ? new Date(data.closed_at) : undefined,
+      status: data.status || 'open'
     };
   }
   
@@ -1281,23 +1282,7 @@ export class SupabaseService {
       id: register.id,
       store_id: register.storeId,
       employee_id: register.employeeId,
-      closing_employee_id: register.closingEmployeeId, // <-- AÑADIR ESTA LÍNEA
-      opening_amount: register.openingAmount,
-      closing_amount: register.closingAmount,
-      expected_amount: register.expectedAmount,
-      difference: register.difference,
-      expenses_turno: register.expensesTurno,
-      opened_at: register.openedAt.toISOString(),
-      closed_at: register.closedAt?.toISOString(),
-      status: register.status
-    };
-  }
-
-  private static mapCashRegisterToSupabase(register: CashRegister): any {
-    return {
-      id: register.id,
-      store_id: register.storeId,
-      employee_id: register.employeeId,
+      closing_employee_id: register.closingEmployeeId,
       opening_amount: register.openingAmount,
       closing_amount: register.closingAmount,
       expected_amount: register.expectedAmount,
@@ -1381,5 +1366,209 @@ export class SupabaseService {
       email: store.email,
       is_active: store.isActive
     };
+  }
+  // ============== GESTIÓN MULTI-TIENDA ==============
+
+  static async getUserStores(userId: string): Promise<string[]> {
+    try {
+      const userStoresExists = await this.tableExists('user_stores');
+      if (!userStoresExists) {
+        console.warn('user_stores table does not exist');
+        return [];
+      }
+
+      const { data, error } = await supabase
+        .from('user_stores')
+        .select('store_id')
+        .eq('user_id', userId)
+        .eq('is_active', true);
+      
+      if (error) {
+        console.error('Error fetching user stores:', error);
+        return [];
+      }
+      
+      return (data || []).map(row => row.store_id);
+    } catch (error) {
+      console.error('Error in getUserStores:', error);
+      return [];
+    }
+  }
+
+  static async verifyStoreAccess(userId: string, storeId: string): Promise<boolean> {
+    try {
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select('role')
+        .eq('id', userId)
+        .single();
+      
+      if (userError) {
+        console.error('Error checking user role:', userError);
+        return false;
+      }
+
+      if (userData?.role === 'admin') {
+        return true;
+      }
+
+      const userStoresExists = await this.tableExists('user_stores');
+      if (!userStoresExists) {
+        console.warn('user_stores table does not exist');
+        return false;
+      }
+
+      const { data, error } = await supabase
+        .from('user_stores')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('store_id', storeId)
+        .eq('is_active', true)
+        .single();
+      
+      if (error) {
+        return false;
+      }
+      
+      return !!data;
+    } catch (error) {
+      console.error('Error in verifyStoreAccess:', error);
+      return false;
+    }
+  }
+
+  static async updateUserStores(userId: string, storeIds: string[]): Promise<boolean> {
+    try {
+      const userStoresExists = await this.tableExists('user_stores');
+      if (!userStoresExists) {
+        console.error('user_stores table does not exist');
+        return false;
+      }
+
+      const { error: deleteError } = await supabase
+        .from('user_stores')
+        .delete()
+        .eq('user_id', userId);
+      
+      if (deleteError && deleteError.code !== 'PGRST116') {
+        console.error('Error deleting existing user stores:', deleteError);
+        return false;
+      }
+
+      if (storeIds.length > 0) {
+        const userStores = storeIds.map(storeId => ({
+          user_id: userId,
+          store_id: storeId,
+          is_active: true
+        }));
+
+        const { error: insertError } = await supabase
+          .from('user_stores')
+          .insert(userStores);
+        
+        if (insertError) {
+          console.error('Error inserting user stores:', insertError);
+          return false;
+        }
+      }
+
+      console.log('✅ User stores updated successfully');
+      return true;
+    } catch (error) {
+      console.error('Error in updateUserStores:', error);
+      return false;
+    }
+  }
+
+  static async authenticateUserMultiStore(
+    username: string, 
+    password: string, 
+    storeId: string
+  ): Promise<User | null> {
+    try {
+      const usersExists = await this.tableExists('users');
+      if (!usersExists) {
+        console.warn('Users table does not exist');
+        return null;
+      }
+
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('username', username)
+        .eq('is_active', true)
+        .single();
+      
+      if (error || !data) {
+        return null;
+      }
+
+      const isValidPassword = data.password_hash === password || 
+                             data.password_hash === this.hashPassword(password) ||
+                             (password === '123456' && !data.password_hash);
+      
+      if (!isValidPassword) {
+        return null;
+      }
+
+      if (data.role === 'admin') {
+        return {
+          ...this.mapSupabaseToUser(data),
+          storeId
+        };
+      }
+
+      const hasAccess = await this.verifyStoreAccess(data.id, storeId);
+      if (!hasAccess) {
+        console.log('❌ Employee does not have access to this store');
+        return null;
+      }
+
+      return {
+        ...this.mapSupabaseToUser(data),
+        storeId
+      };
+    } catch (error) {
+      console.error('Error authenticating user:', error);
+      return null;
+    }
+  }
+
+  static async getAvailableStoresForUser(username: string): Promise<string[]> {
+    try {
+      const usersExists = await this.tableExists('users');
+      if (!usersExists) {
+        return [];
+      }
+
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select('id, role')
+        .eq('username', username)
+        .eq('is_active', true)
+        .single();
+      
+      if (userError || !userData) {
+        return [];
+      }
+
+      if (userData.role === 'admin') {
+        const { data: stores, error: storesError } = await supabase
+          .from('stores')
+          .select('id')
+          .eq('is_active', true);
+        
+        if (storesError) {
+          return [];
+        }
+        
+        return (stores || []).map(s => s.id);
+      }
+
+      return await this.getUserStores(userData.id);
+    } catch (error) {
+      console.error('Error in getAvailableStoresForUser:', error);
+      return [];
+    }
   }
 }
