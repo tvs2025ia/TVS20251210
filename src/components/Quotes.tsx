@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useData } from '../contexts/DataContext';
 import { useStore } from '../contexts/StoreContext';
 import { useAuth } from '../contexts/AuthContext';
-import { Product, SaleItem, Quote, Customer } from '../types';
+import { Product, SaleItem, Quote, Customer, Sale } from '../types';
 import { 
   Search, 
   Plus, 
@@ -20,7 +20,9 @@ import {
   Truck,
   Minus,
   Menu,
-  ChevronDown
+  ChevronDown,
+  ShoppingCart,
+  Zap
 } from 'lucide-react';
 
 // Estilos de impresión
@@ -43,7 +45,7 @@ const usePrintStyles = () => {
 export function Quotes() {
   usePrintStyles();
 
-  const { products, quotes, customers, addQuote, updateQuote } = useData();
+  const { products, quotes, customers, addQuote, updateQuote, addSale } = useData();
   const { currentStore } = useStore();
   const { user } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
@@ -52,11 +54,24 @@ export function Quotes() {
   const [editingQuote, setEditingQuote] = useState<Quote | null>(null);
   const [viewingQuote, setViewingQuote] = useState<Quote | null>(null);
   const [showMobileFilters, setShowMobileFilters] = useState(false);
+  const [productSearch, setProductSearch] = useState('');
 
-  const storeProducts = products.filter(p => p.storeId === currentStore?.id);
-  const storeCustomers = customers.filter(c => c.storeId === currentStore?.id);
-  const storeQuotes = quotes.filter(q => q.storeId === currentStore?.id);
+  // Memoizar todos los datos del store para evitar renders innecesarios
+  const storeProducts = React.useMemo(() => 
+    products.filter(p => p.storeId === currentStore?.id), 
+    [products, currentStore?.id]
+  );
   
+  const storeCustomers = React.useMemo(() => 
+    customers.filter(c => c.storeId === currentStore?.id), 
+    [customers, currentStore?.id]
+  );
+  
+  const storeQuotes = React.useMemo(() => 
+    quotes.filter(q => q.storeId === currentStore?.id) || [], 
+    [quotes, currentStore?.id]
+  );
+
   const filteredQuotes = storeQuotes.filter(quote => {
     const customer = storeCustomers.find(c => c.id === quote.customerId);
     const matchesSearch = customer?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -93,7 +108,51 @@ export function Quotes() {
     }
   };
 
-  // MODAL CREAR/EDITAR - Mejorado para móvil
+  // Función para convertir cotización en venta
+  const convertToSale = async (quote: Quote) => {
+    if (!user) {
+      alert('Error: Usuario no autenticado');
+      return;
+    }
+
+    try {
+      const newSale: Sale = {
+        id: Date.now().toString(),
+        storeId: quote.storeId,
+        employeeId: user.id,
+        customerId: quote.customerId,
+        items: quote.items,
+        subtotal: quote.subtotal,
+        discount: quote.discount,
+        shippingCost: quote.shippingCost,
+        total: quote.total,
+        netTotal: quote.total,
+        paymentMethod: 'cash',
+        paymentMethodDiscount: 0,
+        date: new Date(),
+        invoiceNumber: `FAC-${Date.now()}`
+      };
+
+      await addSale(newSale);
+      
+      // Marcamos como aceptada en lugar de completed para evitar errores de tipos
+      const updatedQuote = { 
+        ...quote, 
+        status: 'accepted' as const
+      };
+      
+      await updateQuote(updatedQuote);
+      
+      alert('✅ Cotización convertida en venta exitosamente');
+      setViewingQuote(null);
+      
+    } catch (error) {
+      console.error('Error al convertir cotización en venta:', error);
+      alert('❌ Error al convertir la cotización en venta');
+    }
+  };
+
+  // MODAL CREAR/EDITAR - Mejorado con búsqueda de productos
   const CreateQuoteModal = ({ onClose, onSave, quote }: {
     onClose: () => void;
     onSave: (quote: Quote) => void;
@@ -108,18 +167,28 @@ export function Quotes() {
     );
     const [selectedProduct, setSelectedProduct] = useState('');
     const [customPrice, setCustomPrice] = useState<number | ''>('');
+    const [showProductDropdown, setShowProductDropdown] = useState(false);
 
     useEffect(() => {
       if (selectedProduct) {
         const prod = storeProducts.find(p => p.id === selectedProduct);
         setCustomPrice(prod ? prod.price : '');
-      } else {
-        setCustomPrice('');
+        setShowProductDropdown(false);
+        setProductSearch('');
       }
-    }, [selectedProduct]);
+    }, [selectedProduct, storeProducts]);
 
     const subtotal = cart.reduce((sum, item) => sum + item.total, 0);
     const total = subtotal - discount + shippingCost;
+
+    // ✅ CALCULAR PRODUCTOS FILTRADOS DIRECTAMENTE (sin estado adicional)
+    const displayedProducts = productSearch.trim() === '' 
+      ? storeProducts.slice(0, 10)
+      : storeProducts.filter(product =>
+          product.name.toLowerCase().includes(productSearch.toLowerCase()) ||
+          product.sku.toLowerCase().includes(productSearch.toLowerCase()) ||
+          product.category.toLowerCase().includes(productSearch.toLowerCase())
+        ).slice(0, 10);
 
     const addToCart = (productId: string) => {
       const product = storeProducts.find(p => p.id === productId);
@@ -145,6 +214,8 @@ export function Quotes() {
       }
       setSelectedProduct('');
       setCustomPrice('');
+      setProductSearch('');
+      setShowProductDropdown(false);
     };
 
     const updateQuantity = (productId: string, newQuantity: number) => {
@@ -185,6 +256,11 @@ export function Quotes() {
 
       onSave(newQuote);
       onClose();
+    };
+
+    const handleProductSelect = (product: Product) => {
+      setSelectedProduct(product.id);
+      setCustomPrice(product.price);
     };
 
     return (
@@ -234,44 +310,66 @@ export function Quotes() {
                 </div>
               </div>
 
-              {/* Agregar productos */}
+              {/* Agregar productos con búsqueda */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Agregar Producto
+                  Buscar y Agregar Producto
                 </label>
-                <div className="flex flex-col sm:flex-row gap-2">
-                  <select
-                    value={selectedProduct}
-                    onChange={(e) => setSelectedProduct(e.target.value)}
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
-                  >
-                    <option value="">Seleccionar producto</option>
-                    {storeProducts.map(product => (
-                      <option key={product.id} value={product.id}>
-                        {product.name} - {formatCurrency(product.price)}
-                      </option>
-                    ))}
-                  </select>
-                  
+                <div className="relative">
                   <div className="flex gap-2">
-                    {selectedProduct && (
+                    <div className="flex-1 relative">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                       <input
-                        type="number"
-                        value={customPrice}
-                        min="1"
-                        onChange={e => setCustomPrice(Number(e.target.value))}
-                        className="w-full sm:w-24 px-2 py-2 border border-gray-300 rounded-lg text-sm"
-                        placeholder="Precio"
+                        type="text"
+                        value={productSearch}
+                        onChange={(e) => {
+                          setProductSearch(e.target.value);
+                          setShowProductDropdown(true);
+                        }}
+                        onFocus={() => setShowProductDropdown(true)}
+                        placeholder="Buscar producto por nombre, SKU o categoría..."
+                        className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                       />
+                      
+                      {/* Dropdown de productos */}
+                      {showProductDropdown && displayedProducts.length > 0 && (
+                        <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-auto">
+                          {displayedProducts.map(product => (
+                            <div
+                              key={product.id}
+                              onClick={() => handleProductSelect(product)}
+                              className="px-4 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-100 last:border-b-0"
+                            >
+                              <div className="font-medium text-sm text-gray-900">{product.name}</div>
+                              <div className="text-xs text-gray-500">
+                                SKU: {product.sku} | {product.category} | {formatCurrency(product.price)}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    
+                    {selectedProduct && (
+                      <div className="flex gap-2">
+                        <input
+                          type="number"
+                          value={customPrice}
+                          min="1"
+                          onChange={e => setCustomPrice(Number(e.target.value))}
+                          className="w-24 px-2 py-2 border border-gray-300 rounded-lg text-sm"
+                          placeholder="Precio"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => selectedProduct && addToCart(selectedProduct)}
+                          disabled={!selectedProduct || customPrice === '' || Number(customPrice) <= 0}
+                          className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:bg-gray-300 transition-colors flex items-center justify-center"
+                        >
+                          <Plus className="w-4 h-4" />
+                        </button>
+                      </div>
                     )}
-                    <button
-                      type="button"
-                      onClick={() => selectedProduct && addToCart(selectedProduct)}
-                      disabled={!selectedProduct || customPrice === '' || Number(customPrice) <= 0}
-                      className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:bg-gray-300 transition-colors flex items-center justify-center"
-                    >
-                      <Plus className="w-4 h-4 sm:w-5 sm:h-5" />
-                    </button>
                   </div>
                 </div>
               </div>
@@ -279,7 +377,7 @@ export function Quotes() {
               {/* Lista de productos en el carrito */}
               {cart.length > 0 && (
                 <div className="border border-gray-200 rounded-lg p-3 sm:p-4">
-                  <h4 className="font-medium text-gray-900 mb-3">Productos</h4>
+                  <h4 className="font-medium text-gray-900 mb-3">Productos en Cotización</h4>
                   <div className="space-y-2">
                     {cart.map(item => (
                       <div key={item.productId} className="flex flex-col sm:flex-row sm:items-center justify-between bg-gray-50 p-3 rounded-lg gap-2">
@@ -376,7 +474,7 @@ export function Quotes() {
     );
   };
 
-  // MODAL VER - Mejorado para móvil
+  // MODAL VER - Mejorado con botón de convertir en venta
   const ViewQuoteModal = ({ quote, onClose }: {
     quote: Quote;
     onClose: () => void;
@@ -391,6 +489,12 @@ export function Quotes() {
 
     const handlePrint = () => {
       window.print();
+    };
+
+    const handleConvertToSale = () => {
+      if (confirm('¿Estás seguro de convertir esta cotización en una venta?')) {
+        convertToSale(quote);
+      }
     };
 
     return (
@@ -483,7 +587,18 @@ export function Quotes() {
                 Imprimir Cotización
               </button>
 
-              {/* Acciones */}
+              {/* Botón convertir en venta (solo para cotizaciones pendientes o aceptadas) */}
+              {(quote.status === 'accepted' || quote.status === 'pending') && !isExpired && (
+                <button
+                  onClick={handleConvertToSale}
+                  className="w-full bg-green-600 text-white py-2 px-4 rounded-lg hover:bg-green-700 transition-colors no-print flex items-center justify-center space-x-2"
+                >
+                  <Zap className="w-4 h-4" />
+                  <span>Convertir en Venta</span>
+                </button>
+              )}
+
+              {/* Acciones para cotizaciones pendientes */}
               {quote.status === 'pending' && !isExpired && (
                 <div className="flex flex-col sm:flex-row gap-3 no-print">
                   <button

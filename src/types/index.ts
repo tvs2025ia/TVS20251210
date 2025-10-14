@@ -98,7 +98,7 @@ export interface Quote {
   shippingCost: number;
   total: number;
   validUntil: Date;
-  status: 'pending' | 'accepted' | 'rejected' | 'expired';
+  status: 'pending' | 'accepted' | 'rejected' | 'expired' | 'completed';
   createdAt: Date;
   employeeId: string;
 }

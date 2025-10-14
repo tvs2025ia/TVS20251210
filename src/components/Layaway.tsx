@@ -45,8 +45,6 @@ export function LayawayComponent() {
   const storeProducts = React.useMemo(() => products.filter(p => p.storeId === currentStore?.id), [products, currentStore?.id]);
   const storeCustomers = React.useMemo(() => customers.filter(c => c.storeId === currentStore?.id), [customers, currentStore?.id]);
   const storeLayaways = React.useMemo(() => layaways?.filter(l => l.storeId === currentStore?.id) || [], [layaways, currentStore?.id]);
-  const activeLayaways = storeLayaways.filter(l => l.status === 'active');
-  const completedLayaways = storeLayaways.filter(l => l.status === 'completed');
 
   const filteredProducts = storeProducts.filter(product =>
     product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -73,13 +71,20 @@ export function LayawayComponent() {
     // ✅ SOLO VISUAL: Si saldo es 0, mostrar como completado
     const displayStatus = remainingBalance <= 0 ? 'completed' : layaway.status;
   
-   return {
+    return {
       ...layaway,
-     totalPaid,
+      totalPaid,
       remainingBalance: Math.max(0, remainingBalance),
       status: displayStatus // ✅ Solo para mostrar, no se guarda en BD
     };
   };
+
+  // ✅ CALCULAR PRIMERO los totales actualizados
+  const updatedLayaways = storeLayaways.map(layaway => calculateLayawayTotals(layaway));
+
+  // ✅ LUEGO FILTRAR basado en el status calculado
+  const activeLayaways = updatedLayaways.filter(l => l.status === 'active');
+  const completedLayaways = updatedLayaways.filter(l => l.status === 'completed');
 
   const addToCart = (product: Product) => {
     const existingItem = cart.find(item => item.productId === product.id);
@@ -562,8 +567,6 @@ export function LayawayComponent() {
                   const customer = storeCustomers.find(c => c.id === layaway.customerId);
                   const isOverdue = layaway.dueDate && new Date() > new Date(layaway.dueDate);
                   
-                  const updatedLayaway = calculateLayawayTotals(layaway);
-                  
                   return (
                     <div key={layaway.id} className="bg-white rounded-lg border border-gray-200 p-3 sm:p-4 hover:shadow-md transition-shadow">
                       <div className="flex items-center justify-between mb-3">
@@ -579,22 +582,22 @@ export function LayawayComponent() {
                       <div className="space-y-1 sm:space-y-2 mb-3 sm:mb-4">
                         <div className="flex justify-between text-xs sm:text-sm">
                           <span className="text-gray-600">Total:</span>
-                          <span className="font-semibold">{formatCurrency(updatedLayaway.total)}</span>
+                          <span className="font-semibold">{formatCurrency(layaway.total)}</span>
                         </div>
                         <div className="flex justify-between text-xs sm:text-sm">
                           <span className="text-gray-600">Pagado:</span>
-                          <span className="font-semibold text-green-600">{formatCurrency(updatedLayaway.totalPaid)}</span>
+                          <span className="font-semibold text-green-600">{formatCurrency(layaway.totalPaid)}</span>
                         </div>
                         <div className="flex justify-between text-xs sm:text-sm">
                           <span className="text-gray-600">Saldo:</span>
-                          <span className="font-semibold text-orange-600">{formatCurrency(updatedLayaway.remainingBalance)}</span>
+                          <span className="font-semibold text-orange-600">{formatCurrency(layaway.remainingBalance)}</span>
                         </div>
                       </div>
 
                       <div className="w-full bg-gray-200 rounded-full h-2 mb-3 sm:mb-4">
                         <div 
                           className="bg-green-500 h-2 rounded-full transition-all duration-300" 
-                          style={{ width: `${updatedLayaway.total > 0 ? (updatedLayaway.totalPaid / updatedLayaway.total) * 100 : 0}%` }}
+                          style={{ width: `${layaway.total > 0 ? (layaway.totalPaid / layaway.total) * 100 : 0}%` }}
                         ></div>
                       </div>
 
@@ -654,7 +657,6 @@ export function LayawayComponent() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
                     {completedLayaways.map(layaway => {
                       const customer = storeCustomers.find(c => c.id === layaway.customerId);
-                      const updatedLayaway = calculateLayawayTotals(layaway);
 
                       return (
                         <div key={layaway.id} className="bg-green-50 rounded-lg border border-green-200 p-3 sm:p-4">
@@ -669,11 +671,11 @@ export function LayawayComponent() {
                           <div className="space-y-1 sm:space-y-2 mb-3 sm:mb-4">
                             <div className="flex justify-between text-xs sm:text-sm">
                               <span className="text-gray-600">Total:</span>
-                              <span className="font-semibold">{formatCurrency(updatedLayaway.total)}</span>
+                              <span className="font-semibold">{formatCurrency(layaway.total)}</span>
                             </div>
                             <div className="flex justify-between text-xs sm:text-sm">
                               <span className="text-gray-600">Pagado:</span>
-                              <span className="font-semibold text-green-600">{formatCurrency(updatedLayaway.totalPaid)}</span>
+                              <span className="font-semibold text-green-600">{formatCurrency(layaway.totalPaid)}</span>
                             </div>
                             <div className="flex justify-between text-xs sm:text-sm text-green-600">
                               <span>Estado:</span>
