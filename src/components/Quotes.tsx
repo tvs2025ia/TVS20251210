@@ -24,6 +24,8 @@ import {
   ShoppingCart,
   Zap
 } from 'lucide-react';
+import { CreateQuoteModal } from './CreateQuoteModal';
+import { ViewQuoteModal } from './ViewQuoteModal';
 
 // Estilos de impresión
 const usePrintStyles = () => {
@@ -54,7 +56,6 @@ export function Quotes() {
   const [editingQuote, setEditingQuote] = useState<Quote | null>(null);
   const [viewingQuote, setViewingQuote] = useState<Quote | null>(null);
   const [showMobileFilters, setShowMobileFilters] = useState(false);
-  const [productSearch, setProductSearch] = useState('');
 
   // Memoizar todos los datos del store para evitar renders innecesarios
   const storeProducts = React.useMemo(() => 
@@ -152,480 +153,14 @@ export function Quotes() {
     }
   };
 
-  // MODAL CREAR/EDITAR - Mejorado con búsqueda de productos
-  const CreateQuoteModal = ({ onClose, onSave, quote }: {
-    onClose: () => void;
-    onSave: (quote: Quote) => void;
-    quote?: Quote;
-  }) => {
-    const [selectedCustomerId, setSelectedCustomerId] = useState(quote?.customerId || '');
-    const [cart, setCart] = useState<SaleItem[]>(quote?.items || []);
-    const [discount, setDiscount] = useState(quote?.discount || 0);
-    const [shippingCost, setShippingCost] = useState(quote?.shippingCost || 0);
-    const [validDays, setValidDays] = useState(
-      quote ? Math.max(1, Math.ceil((new Date(quote.validUntil).getTime() - new Date().getTime()) / (24 * 3600 * 1000))) : 30
-    );
-    const [selectedProduct, setSelectedProduct] = useState('');
-    const [customPrice, setCustomPrice] = useState<number | ''>('');
-    const [showProductDropdown, setShowProductDropdown] = useState(false);
-
-    useEffect(() => {
-      if (selectedProduct) {
-        const prod = storeProducts.find(p => p.id === selectedProduct);
-        setCustomPrice(prod ? prod.price : '');
-      }
-    }, [selectedProduct, storeProducts]);
-
-    const subtotal = cart.reduce((sum, item) => sum + item.total, 0);
-    const total = subtotal - discount + shippingCost;
-
-    // ✅ MEMOIZAR productos filtrados para evitar recálculo en cada render
-    const displayedProducts = React.useMemo(() => {
-      if (productSearch.trim() === '') {
-        return storeProducts.slice(0, 10);
-      }
-      const searchLower = productSearch.toLowerCase();
-      return storeProducts.filter(product =>
-        product.name.toLowerCase().includes(searchLower) ||
-        product.sku.toLowerCase().includes(searchLower) ||
-        product.category.toLowerCase().includes(searchLower)
-      ).slice(0, 10);
-    }, [productSearch, storeProducts]);
-
-    const addToCart = (productId: string) => {
-      const product = storeProducts.find(p => p.id === productId);
-      if (!product || customPrice === '' || Number(customPrice) <= 0) return;
-
-      const price = Number(customPrice);
-      const existingItem = cart.find(item => item.productId === productId);
-      if (existingItem) {
-        setCart(prev => prev.map(item =>
-          item.productId === productId
-            ? { ...item, quantity: item.quantity + 1, unitPrice: price, total: (item.quantity + 1) * price }
-            : item
-        ));
-      } else {
-        const newItem: SaleItem = {
-          productId: product.id,
-          productName: product.name,
-          quantity: 1,
-          unitPrice: price,
-          total: price
-        };
-        setCart(prev => [...prev, newItem]);
-      }
-      setSelectedProduct('');
-      setCustomPrice('');
-      setProductSearch('');
-      setShowProductDropdown(false);
-    };
-
-    const updateQuantity = (productId: string, newQuantity: number) => {
-      if (newQuantity <= 0) {
-        setCart(prev => prev.filter(item => item.productId !== productId));
-        return;
-      }
-      setCart(prev => prev.map(item =>
-        item.productId === productId
-          ? { ...item, quantity: newQuantity, total: newQuantity * item.unitPrice }
-          : item
-      ));
-    };
-
-    const handleSubmit = (e: React.FormEvent) => {
-      e.preventDefault();
-      if (!selectedCustomerId || cart.length === 0) {
-        alert('Selecciona un cliente y agrega productos');
-        return;
-      }
-      const validUntil = new Date();
-      validUntil.setDate(validUntil.getDate() + validDays);
-
-      const newQuote: Quote = {
-        id: quote?.id || Date.now().toString(),
-        storeId: quote?.storeId || currentStore?.id || '1',
-        customerId: selectedCustomerId,
-        items: cart,
-        subtotal,
-        discount,
-        shippingCost,
-        total,
-        validUntil,
-        status: quote?.status || 'pending',
-        createdAt: quote?.createdAt || new Date(),
-        employeeId: quote?.employeeId || user?.id || '1'
-      };
-
-      onSave(newQuote);
-      onClose();
-    };
-
-    const handleProductSelect = (product: Product) => {
-      setSelectedProduct(product.id);
-      setCustomPrice(product.price);
-      setProductSearch(''); // ✅ Limpiar búsqueda al seleccionar
-      setShowProductDropdown(false);
-    };
-
-    return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4">
-        <div className="bg-white rounded-xl w-full max-w-4xl max-h-[95vh] overflow-auto">
-          <div className="p-4 sm:p-6">
-            <div className="flex items-center justify-between mb-4 sm:mb-6">
-              <h3 className="text-lg sm:text-xl font-bold text-gray-900">
-                {quote ? 'Editar Cotización' : 'Nueva Cotización'}
-              </h3>
-              <button onClick={onClose} className="text-gray-500 hover:text-gray-700 p-1">
-                <X className="w-5 h-5 sm:w-6 sm:h-6" />
-              </button>
-            </div>
-            
-            <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
-              {/* Cliente y días de validez */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Cliente *
-                  </label>
-                  <select
-                    value={selectedCustomerId}
-                    onChange={(e) => setSelectedCustomerId(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
-                    required
-                  >
-                    <option value="">Seleccionar cliente</option>
-                    {storeCustomers.map(customer => (
-                      <option key={customer.id} value={customer.id}>{customer.name}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Válida por (días)
-                  </label>
-                  <input
-                    type="number"
-                    value={validDays}
-                    onChange={(e) => setValidDays(Number(e.target.value))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
-                    min="1"
-                    max="365"
-                  />
-                </div>
-              </div>
-
-              {/* Agregar productos con búsqueda */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Buscar y Agregar Producto
-                </label>
-                <div className="relative">
-                  <div className="flex gap-2">
-                    <div className="flex-1 relative">
-                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                      <input
-                        type="text"
-                        value={productSearch}
-                        onChange={(e) => {
-                          setProductSearch(e.target.value);
-                          setShowProductDropdown(true);
-                        }}
-                        onFocus={() => setShowProductDropdown(true)}
-                        placeholder="Buscar producto por nombre, SKU o categoría..."
-                        className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
-                      />
-                      
-                      {/* Dropdown de productos */}
-                      {showProductDropdown && displayedProducts.length > 0 && (
-                        <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-auto">
-                          {displayedProducts.map(product => (
-                            <div
-                              key={product.id}
-                              onClick={() => handleProductSelect(product)}
-                              className="px-4 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-100 last:border-b-0"
-                            >
-                              <div className="font-medium text-sm text-gray-900">{product.name}</div>
-                              <div className="text-xs text-gray-500">
-                                SKU: {product.sku} | {product.category} | {formatCurrency(product.price)}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                    
-                    {selectedProduct && (
-                      <div className="flex gap-2">
-                        <input
-                          type="number"
-                          value={customPrice}
-                          min="1"
-                          onChange={e => setCustomPrice(Number(e.target.value))}
-                          className="w-24 px-2 py-2 border border-gray-300 rounded-lg text-sm"
-                          placeholder="Precio"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => selectedProduct && addToCart(selectedProduct)}
-                          disabled={!selectedProduct || customPrice === '' || Number(customPrice) <= 0}
-                          className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:bg-gray-300 transition-colors flex items-center justify-center"
-                        >
-                          <Plus className="w-4 h-4" />
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Lista de productos en el carrito */}
-              {cart.length > 0 && (
-                <div className="border border-gray-200 rounded-lg p-3 sm:p-4">
-                  <h4 className="font-medium text-gray-900 mb-3">Productos en Cotización</h4>
-                  <div className="space-y-2">
-                    {cart.map(item => (
-                      <div key={item.productId} className="flex flex-col sm:flex-row sm:items-center justify-between bg-gray-50 p-3 rounded-lg gap-2">
-                        <div className="flex-1">
-                          <p className="font-medium text-gray-900 text-sm sm:text-base">{item.productName}</p>
-                          <p className="text-xs sm:text-sm text-gray-500">{formatCurrency(item.unitPrice)} c/u</p>
-                        </div>
-                        <div className="flex items-center justify-between sm:justify-end gap-2">
-                          <div className="flex items-center space-x-2">
-                            <button
-                              type="button"
-                              onClick={() => updateQuantity(item.productId, item.quantity - 1)}
-                              className="w-7 h-7 sm:w-8 sm:h-8 bg-white border border-gray-300 rounded-full flex items-center justify-center hover:bg-gray-50"
-                            >
-                              <Minus className="w-3 h-3 sm:w-4 sm:h-4" />
-                            </button>
-                            <span className="w-8 text-center font-medium text-sm">{item.quantity}</span>
-                            <button
-                              type="button"
-                              onClick={() => updateQuantity(item.productId, item.quantity + 1)}
-                              className="w-7 h-7 sm:w-8 sm:h-8 bg-white border border-gray-300 rounded-full flex items-center justify-center hover:bg-gray-50"
-                            >
-                              <Plus className="w-3 h-3 sm:w-4 sm:h-4" />
-                            </button>
-                          </div>
-                          <span className="font-semibold text-gray-900 text-sm sm:text-base min-w-[80px] text-right">
-                            {formatCurrency(item.total)}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Totales */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Descuento
-                  </label>
-                  <input
-                    type="number"
-                    value={discount}
-                    onChange={(e) => setDiscount(Number(e.target.value) || 0)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
-                    min="0"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Costo de Envío
-                  </label>
-                  <input
-                    type="number"
-                    value={shippingCost}
-                    onChange={(e) => setShippingCost(Number(e.target.value) || 0)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
-                    min="0"
-                  />
-                </div>
-                <div className="flex items-end">
-                  <div className="w-full">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Total
-                    </label>
-                    <div className="px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg font-bold text-base sm:text-lg text-green-600">
-                      {formatCurrency(total)}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Botones */}
-              <div className="flex flex-col sm:flex-row gap-3 pt-4">
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="w-full sm:flex-1 bg-gray-200 text-gray-700 py-2 px-4 rounded-lg hover:bg-gray-300 transition-colors"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="w-full sm:flex-1 bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors"
-                >
-                  {quote ? 'Actualizar Cotización' : 'Crear Cotización'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  // MODAL VER - Mejorado con botón de convertir en venta
-  const ViewQuoteModal = ({ quote, onClose }: {
-    quote: Quote;
-    onClose: () => void;
-  }) => {
-    const customer = storeCustomers.find(c => c.id === quote.customerId);
-    const isExpired = new Date() > new Date(quote.validUntil);
-
-    const updateStatus = (newStatus: Quote['status']) => {
-      updateQuote({ ...quote, status: newStatus });
-      onClose();
-    };
-
-    const handlePrint = () => {
-      window.print();
-    };
-
-    const handleConvertToSale = () => {
-      if (confirm('¿Estás seguro de convertir esta cotización en una venta?')) {
-        convertToSale(quote);
-      }
-    };
-
-    return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4">
-        <div className="bg-white rounded-xl w-full max-w-2xl max-h-[95vh] overflow-auto" id="quote-print">
-          <div className="p-4 sm:p-6">
-            <div className="flex items-center justify-between mb-4 sm:mb-6">
-              <h3 className="text-lg sm:text-xl font-bold text-gray-900">Cotización #{quote.id}</h3>
-              <button onClick={onClose} className="text-gray-500 hover:text-gray-700 no-print p-1">
-                <X className="w-5 h-5 sm:w-6 sm:h-6" />
-              </button>
-            </div>
-            
-            <div className="space-y-4 sm:space-y-6">
-              {/* Información de la cotización */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-gray-500">Cliente</p>
-                  <p className="font-medium text-gray-900 text-sm sm:text-base">{customer?.name}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Estado</p>
-                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(quote.status)}`}>
-                    {getStatusText(quote.status)}
-                  </span>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Fecha de Creación</p>
-                  <p className="font-medium text-gray-900 text-sm sm:text-base">
-                    {new Date(quote.createdAt).toLocaleDateString()}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Válida Hasta</p>
-                  <p className={`font-medium text-sm sm:text-base ${isExpired ? 'text-red-600' : 'text-gray-900'}`}>
-                    {new Date(quote.validUntil).toLocaleDateString()}
-                  </p>
-                </div>
-              </div>
-
-              {/* Productos */}
-              <div>
-                <h4 className="font-medium text-gray-900 mb-3">Productos</h4>
-                <div className="space-y-2">
-                  {quote.items.map(item => (
-                    <div key={item.productId} className="flex flex-col sm:flex-row justify-between bg-gray-50 p-3 rounded-lg gap-2">
-                      <div className="flex-1">
-                        <p className="font-medium text-gray-900 text-sm sm:text-base">{item.productName}</p>
-                        <p className="text-xs sm:text-sm text-gray-500">
-                          {item.quantity} x {formatCurrency(item.unitPrice)}
-                        </p>
-                      </div>
-                      <p className="font-semibold text-gray-900 text-sm sm:text-base text-right">
-                        {formatCurrency(item.total)}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Totales */}
-              <div className="bg-gray-50 p-3 sm:p-4 rounded-lg space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span>Subtotal:</span>
-                  <span>{formatCurrency(quote.subtotal)}</span>
-                </div>
-                {quote.discount > 0 && (
-                  <div className="flex justify-between text-sm text-green-600">
-                    <span>Descuento:</span>
-                    <span>-{formatCurrency(quote.discount)}</span>
-                  </div>
-                )}
-                {quote.shippingCost > 0 && (
-                  <div className="flex justify-between text-sm">
-                    <span>Envío:</span>
-                    <span>{formatCurrency(quote.shippingCost)}</span>
-                  </div>
-                )}
-                <div className="flex justify-between text-base sm:text-lg font-bold pt-2 border-t border-gray-200">
-                  <span>Total:</span>
-                  <span>{formatCurrency(quote.total)}</span>
-                </div>
-              </div>
-
-              {/* Botón imprimir */}
-              <button
-                onClick={handlePrint}
-                className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors no-print"
-              >
-                Imprimir Cotización
-              </button>
-
-              {/* Botón convertir en venta (solo para cotizaciones pendientes o aceptadas) */}
-              {(quote.status === 'accepted' || quote.status === 'pending') && !isExpired && (
-                <button
-                  onClick={handleConvertToSale}
-                  className="w-full bg-green-600 text-white py-2 px-4 rounded-lg hover:bg-green-700 transition-colors no-print flex items-center justify-center space-x-2"
-                >
-                  <Zap className="w-4 h-4" />
-                  <span>Convertir en Venta</span>
-                </button>
-              )}
-
-              {/* Acciones para cotizaciones pendientes */}
-              {quote.status === 'pending' && !isExpired && (
-                <div className="flex flex-col sm:flex-row gap-3 no-print">
-                  <button
-                    onClick={() => updateStatus('accepted')}
-                    className="flex-1 bg-green-600 text-white py-2 px-4 rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center space-x-2"
-                  >
-                    <Check className="w-4 h-4" />
-                    <span>Aceptar</span>
-                  </button>
-                  <button
-                    onClick={() => updateStatus('rejected')}
-                    className="flex-1 bg-red-600 text-white py-2 px-4 rounded-lg hover:bg-red-700 transition-colors flex items-center justify-center space-x-2"
-                  >
-                    <X className="w-4 h-4" />
-                    <span>Rechazar</span>
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-    );
+  const handleSaveQuote = async (quote: Quote) => {
+    if (editingQuote) {
+      await updateQuote(quote);
+      setEditingQuote(null);
+    } else {
+      await addQuote(quote);
+      setShowCreateModal(false);
+    }
   };
 
   return (
@@ -893,23 +428,37 @@ export function Quotes() {
       {/* Modales */}
       {showCreateModal && (
         <CreateQuoteModal
-        onClose={() => setShowCreateModal(false)}
-        onSave={(quote) => addQuote(quote)}
+          onClose={() => setShowCreateModal(false)}
+          onSave={handleSaveQuote}
+          storeProducts={storeProducts}
+          storeCustomers={storeCustomers}
+          currentStore={currentStore}
+          user={user}
         />
-        )}
+      )}
       {editingQuote && (
         <CreateQuoteModal
-        quote={editingQuote}
-        onClose={() => setEditingQuote(null)}
-        onSave={(quote) => updateQuote(quote)}
+          quote={editingQuote}
+          onClose={() => setEditingQuote(null)}
+          onSave={handleSaveQuote}
+          storeProducts={storeProducts}
+          storeCustomers={storeCustomers}
+          currentStore={currentStore}
+          user={user}
         />
-        )}
+      )}
       {viewingQuote && (
         <ViewQuoteModal
-        quote={viewingQuote}
-        onClose={() => setViewingQuote(null)}
+          quote={viewingQuote}
+          onClose={() => setViewingQuote(null)}
+          storeCustomers={storeCustomers}
+          updateQuote={updateQuote}
+          convertToSale={convertToSale}
+          formatCurrency={formatCurrency}
+          getStatusColor={getStatusColor}
+          getStatusText={getStatusText}
         />
-        )}
-      </div>
-      );
-    }
+      )}
+    </div>
+  );
+}
