@@ -40,10 +40,13 @@ export function LayawayComponent() {
   const [abonoOpen, setAbonoOpen] = useState(false);
   const [abonoLayaway, setAbonoLayaway] = useState<Layaway | null>(null);
   const [showCart, setShowCart] = useState(false);
+  const [showCompleted, setShowCompleted] = useState(false);
 
   const storeProducts = React.useMemo(() => products.filter(p => p.storeId === currentStore?.id), [products, currentStore?.id]);
   const storeCustomers = React.useMemo(() => customers.filter(c => c.storeId === currentStore?.id), [customers, currentStore?.id]);
   const storeLayaways = React.useMemo(() => layaways?.filter(l => l.storeId === currentStore?.id) || [], [layaways, currentStore?.id]);
+  const activeLayaways = storeLayaways.filter(l => l.status === 'active');
+  const completedLayaways = storeLayaways.filter(l => l.status === 'completed');
 
   const filteredProducts = storeProducts.filter(product =>
     product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -158,7 +161,6 @@ export function LayawayComponent() {
     setShowCart(false);
     alert('Separado creado exitosamente');
   };
-
 
   const ProductCard = ({ product }: { product: Product }) => (
     <div className="bg-white rounded-lg border border-gray-200 p-2 sm:p-3 md:p-4 hover:shadow-md transition-shadow">
@@ -345,7 +347,6 @@ export function LayawayComponent() {
       </div>
     );
   };
-
 
   const CartPanel = () => (
     <div className="bg-white border-l border-gray-200 flex flex-col h-full">
@@ -551,13 +552,14 @@ export function LayawayComponent() {
 
             {/* Active Layaways */}
             <div className="mb-6">
-              <h2 className="text-base sm:text-lg font-semibold text-gray-900 mb-4">Separados Activos</h2>
+              <h2 className="text-base sm:text-lg font-semibold text-gray-900 mb-4">
+                Separados Activos ({activeLayaways.length})
+              </h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
-                {storeLayaways.filter(l => l.status === 'active').map(layaway => {
+                {activeLayaways.map(layaway => {
                   const customer = storeCustomers.find(c => c.id === layaway.customerId);
                   const isOverdue = layaway.dueDate && new Date() > new Date(layaway.dueDate);
                   
-                  // Calcular totales actualizados para mostrar en las tarjetas
                   const updatedLayaway = calculateLayawayTotals(layaway);
                   
                   return (
@@ -618,13 +620,86 @@ export function LayawayComponent() {
                 })}
               </div>
               
-              {storeLayaways.filter(l => l.status === 'active').length === 0 && (
+              {activeLayaways.length === 0 && (
                 <div className="text-center py-8 text-gray-500">
                   <FileText className="w-8 h-8 sm:w-12 sm:h-12 mx-auto mb-2 opacity-50" />
                   <p className="text-sm sm:text-base">No hay separados activos</p>
                 </div>
               )}
             </div>
+
+            {/* Separados Completados - Colapsable */}
+            {completedLayaways.length > 0 && (
+              <div className="mb-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-base sm:text-lg font-semibold text-gray-900">
+                    Separados Completados ({completedLayaways.length})
+                  </h2>
+                  <button
+                    onClick={() => setShowCompleted(!showCompleted)}
+                    className="flex items-center space-x-2 text-orange-600 hover:text-orange-700 transition-colors text-sm sm:text-base"
+                  >
+                    <span>{showCompleted ? 'Ocultar' : 'Mostrar'}</span>
+                    {showCompleted ? (
+                      <Minus className="w-4 h-4" />
+                    ) : (
+                      <Plus className="w-4 h-4" />
+                    )}
+                  </button>
+                </div>
+
+                {showCompleted && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
+                    {completedLayaways.map(layaway => {
+                      const customer = storeCustomers.find(c => c.id === layaway.customerId);
+                      const updatedLayaway = calculateLayawayTotals(layaway);
+
+                      return (
+                        <div key={layaway.id} className="bg-green-50 rounded-lg border border-green-200 p-3 sm:p-4">
+                          <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center">
+                              <User className="w-4 h-4 sm:w-5 sm:h-5 text-green-400 mr-2" />
+                              <span className="font-medium text-gray-900 text-sm sm:text-base truncate">{customer?.name}</span>
+                            </div>
+                            <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 text-green-500 flex-shrink-0" />
+                          </div>
+                          
+                          <div className="space-y-1 sm:space-y-2 mb-3 sm:mb-4">
+                            <div className="flex justify-between text-xs sm:text-sm">
+                              <span className="text-gray-600">Total:</span>
+                              <span className="font-semibold">{formatCurrency(updatedLayaway.total)}</span>
+                            </div>
+                            <div className="flex justify-between text-xs sm:text-sm">
+                              <span className="text-gray-600">Pagado:</span>
+                              <span className="font-semibold text-green-600">{formatCurrency(updatedLayaway.totalPaid)}</span>
+                            </div>
+                            <div className="flex justify-between text-xs sm:text-sm text-green-600">
+                              <span>Estado:</span>
+                              <span className="font-semibold">Completado</span>
+                            </div>
+                          </div>
+
+                          <div className="w-full bg-gray-200 rounded-full h-2 mb-3 sm:mb-4">
+                            <div 
+                              className="bg-green-600 h-2 rounded-full" 
+                              style={{ width: '100%' }}
+                            ></div>
+                          </div>
+
+                          <button
+                            onClick={() => setViewingLayaway(layaway)}
+                            className="w-full bg-green-600 text-white py-2 rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center space-x-2 text-xs sm:text-sm"
+                          >
+                            <Eye className="w-3 h-3 sm:w-4 sm:h-4" />
+                            <span>Ver Detalles</span>
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Products Grid */}
             <div className="pb-4">
