@@ -173,22 +173,24 @@ export function Quotes() {
       if (selectedProduct) {
         const prod = storeProducts.find(p => p.id === selectedProduct);
         setCustomPrice(prod ? prod.price : '');
-        setShowProductDropdown(false);
-        setProductSearch('');
       }
     }, [selectedProduct, storeProducts]);
 
     const subtotal = cart.reduce((sum, item) => sum + item.total, 0);
     const total = subtotal - discount + shippingCost;
 
-    // ✅ CALCULAR PRODUCTOS FILTRADOS DIRECTAMENTE (sin estado adicional)
-    const displayedProducts = productSearch.trim() === '' 
-      ? storeProducts.slice(0, 10)
-      : storeProducts.filter(product =>
-          product.name.toLowerCase().includes(productSearch.toLowerCase()) ||
-          product.sku.toLowerCase().includes(productSearch.toLowerCase()) ||
-          product.category.toLowerCase().includes(productSearch.toLowerCase())
-        ).slice(0, 10);
+    // ✅ MEMOIZAR productos filtrados para evitar recálculo en cada render
+    const displayedProducts = React.useMemo(() => {
+      if (productSearch.trim() === '') {
+        return storeProducts.slice(0, 10);
+      }
+      const searchLower = productSearch.toLowerCase();
+      return storeProducts.filter(product =>
+        product.name.toLowerCase().includes(searchLower) ||
+        product.sku.toLowerCase().includes(searchLower) ||
+        product.category.toLowerCase().includes(searchLower)
+      ).slice(0, 10);
+    }, [productSearch, storeProducts]);
 
     const addToCart = (productId: string) => {
       const product = storeProducts.find(p => p.id === productId);
@@ -261,6 +263,8 @@ export function Quotes() {
     const handleProductSelect = (product: Product) => {
       setSelectedProduct(product.id);
       setCustomPrice(product.price);
+      setProductSearch(''); // ✅ Limpiar búsqueda al seleccionar
+      setShowProductDropdown(false);
     };
 
     return (
@@ -889,23 +893,23 @@ export function Quotes() {
       {/* Modales */}
       {showCreateModal && (
         <CreateQuoteModal
-          onClose={() => setShowCreateModal(false)}
-          onSave={(quote) => addQuote(quote)}
+        onClose={() => setShowCreateModal(false)}
+        onSave={(quote) => addQuote(quote)}
         />
-      )}
+        )}
       {editingQuote && (
         <CreateQuoteModal
-          quote={editingQuote}
-          onClose={() => setEditingQuote(null)}
-          onSave={(quote) => updateQuote(quote)}
+        quote={editingQuote}
+        onClose={() => setEditingQuote(null)}
+        onSave={(quote) => updateQuote(quote)}
         />
-      )}
+        )}
       {viewingQuote && (
         <ViewQuoteModal
-          quote={viewingQuote}
-          onClose={() => setViewingQuote(null)}
+        quote={viewingQuote}
+        onClose={() => setViewingQuote(null)}
         />
-      )}
-    </div>
-  );
-}
+        )}
+      </div>
+      );
+    }

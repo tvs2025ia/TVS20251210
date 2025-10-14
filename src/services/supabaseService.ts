@@ -1,9 +1,10 @@
-  import { supabase } from '../lib/supabase';
-  import {
-    Product, Sale, Customer, Expense, Purchase, PurchasePayment,
-    User, Supplier, CashRegister,
-    ReceiptTemplate, Layaway, LayawayPayment, LayawayItem, PaymentMethod, Store
-  } from '../types';
+import { supabase } from '../lib/supabase';
+import {
+  Product, Sale, Customer, Expense, Purchase, PurchasePayment,
+  User, Supplier, CashRegister,
+  ReceiptTemplate, Layaway, LayawayPayment, LayawayItem, PaymentMethod, Store,
+  Quote
+} from '../types';
 
   export class SupabaseService {
     private static productsTable: 'products' | 'prestashop_products' | null = null;
@@ -518,6 +519,111 @@
       if (error) throw new Error(`Error saving expense: ${error.message}`);
       return this.mapSupabaseToExpense(data);
     }
+
+    // Quotes
+    static async getAllQuotes(storeId?: string): Promise<Quote[]> {
+      try {
+        const quotesExists = await this.tableExists('quotes');
+        if (!quotesExists) {
+          console.warn('Quotes table does not exist');
+          return [];
+        }
+
+        let query = supabase.from('quotes').select('*, quotes_items(*)');
+        if (storeId) {
+          query = query.eq('store_id', storeId);
+        }
+        const { data, error } = await query.order('created_at', { ascending: false });
+        if (error) {
+          console.error('Error fetching quotes:', error);
+          return [];
+        }
+        return (data || []).map(this.mapSupabaseToQuote);
+      } catch (error) {
+        console.error('Error in getAllQuotes:', error);
+        return [];
+      }
+    }
+
+    static async saveQuote(quote: Quote): Promise<Quote> {
+      const { error: quoteError } = await supabase
+        .from('quotes')
+        .upsert({
+          id: quote.id,
+          store_id: quote.storeId,
+          customer_id: quote.customerId,
+          employee_id: quote.employeeId,
+          subtotal: quote.subtotal,
+          discount: quote.discount,
+          shipping_cost: quote.shippingCost,
+          total: quote.total,
+          status: quote.status,
+          valid_until: quote.validUntil.toISOString(),
+          created_at: quote.createdAt.toISOString()
+        })
+        .select()
+        .single();
+
+      if (quoteError) throw new Error(`Error saving quote: ${quoteError.message}`);
+
+      // Delete existing items before inserting new ones
+      const { error: deleteItemsError } = await supabase
+        .from('quotes_items')
+        .delete()
+        .eq('quote_id', quote.id);
+
+      if (deleteItemsError && deleteItemsError.code !== 'PGRST116') {
+        console.warn('Error deleting quote items:', deleteItemsError);
+      }
+
+      // Save quote items
+      const quoteItems = quote.items.map(item => ({
+        quote_id: quote.id,
+        product_id: item.productId,
+        product_name: item.productName,
+        quantity: item.quantity,
+        unit_price: item.unitPrice,
+        total: item.total
+      }));
+
+      if (quoteItems.length > 0) {
+        const { error: itemsError } = await supabase
+          .from('quotes_items')
+          .insert(quoteItems);
+
+        if (itemsError) throw new Error(`Error saving quote items: ${itemsError.message}`);
+      }
+
+      return quote;
+    }
+
+    static async updateQuote(quote: Quote): Promise<Quote> {
+      return this.saveQuote(quote);
+    }
+
+    private static mapSupabaseToQuote(data: any): Quote {
+      return {
+        id: data.id,
+        storeId: data.store_id,
+        customerId: data.customer_id,
+        employeeId: data.employee_id,
+        items: (data.quotes_items || []).map((item: any) => ({
+          productId: item.product_id,
+          productName: item.product_name,
+          quantity: item.quantity,
+          unitPrice: item.unit_price,
+          total: item.total
+        })),
+        subtotal: data.subtotal,
+        discount: data.discount,
+        shippingCost: data.shipping_cost,
+        total: data.total,
+        status: data.status,
+        validUntil: new Date(data.valid_until),
+        createdAt: new Date(data.created_at)
+      };
+    }
+    
     private static mapSupabaseToCashRegister(data: any): CashRegister {
       return {
         id: data.id,

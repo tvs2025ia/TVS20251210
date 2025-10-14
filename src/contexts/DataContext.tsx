@@ -429,6 +429,18 @@ export function DataProvider({ children }: DataProviderProps) {
         console.warn('Error cargando gastos:', error);
       }
 
+      // Cargar cotizaciones
+      setLoadingProgress(prev => ({ ...prev, secondary: 60 }));
+      try {
+        const quotesResult = await SupabaseService.getAllQuotes(user.storeId);
+        if (quotesResult) {
+          setQuotes(quotesResult);
+          console.log(`Cotizaciones cargadas: ${quotesResult.length}`);
+        }
+      } catch (error) {
+        console.warn('Error cargando cotizaciones:', error);
+      }
+
       // Cargar cajas registradoras
       setLoadingProgress(prev => ({ ...prev, secondary: 75 }));
       try {
@@ -892,11 +904,62 @@ export function DataProvider({ children }: DataProviderProps) {
 
   // Mock implementations for other features
   const addQuote = async (quote: Quote) => {
-    setQuotes(prev => [...prev, quote]);
+    const normalized: Quote = {
+      ...quote,
+      id: isValidUUID(quote.id) ? quote.id : crypto.randomUUID(),
+      storeId: isValidUUID(quote.storeId) ? quote.storeId : (user?.storeId || DEFAULT_STORE_ID),
+      employeeId: isValidUUID(quote.employeeId) ? quote.employeeId : (user?.id || 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')
+    };
+
+    try {
+      // Optimistic update
+      setQuotes(prev => [...prev, normalized]);
+
+      if (isConnected) {
+        try {
+          await SupabaseService.saveQuote(normalized);
+          console.log('Cotización guardada en Supabase');
+        } catch (error) {
+          console.warn('Error guardando cotización en Supabase:', error);
+        }
+      } else {
+        console.log('Cotización guardada offline');
+      }
+    } catch (error) {
+      setQuotes(prev => prev.filter(q => q.id !== normalized.id));
+      console.error('Error guardando cotización:', error);
+      throw error;
+    }
   };
 
   const updateQuote = async (updatedQuote: Quote) => {
-    setQuotes(prev => prev.map(q => q.id === updatedQuote.id ? updatedQuote : q));
+    const normalized: Quote = {
+      ...updatedQuote,
+      id: isValidUUID(updatedQuote.id) ? updatedQuote.id : crypto.randomUUID(),
+      storeId: isValidUUID(updatedQuote.storeId) ? updatedQuote.storeId : (user?.storeId || DEFAULT_STORE_ID),
+      employeeId: isValidUUID(updatedQuote.employeeId) ? updatedQuote.employeeId : (user?.id || 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')
+    };
+
+    try {
+      const originalQuote = quotes.find(q => q.id === normalized.id);
+      setQuotes(prev => prev.map(q => q.id === normalized.id ? normalized : q));
+
+      if (isConnected) {
+        try {
+          await SupabaseService.updateQuote(normalized);
+          console.log('Cotización actualizada en Supabase');
+        } catch (error) {
+          console.warn('Error actualizando cotización en Supabase:', error);
+        }
+      }
+    } catch (error) {
+      const originalQuote = quotes.find(q => q.id === normalized.id);
+      if (originalQuote) {
+        setQuotes(prev => prev.map(q => q.id === normalized.id ? originalQuote : q));
+      }
+      console.error('Error actualizando cotización:', error);
+      throw error;
+    }
   };
 
   const addPurchase = async (purchase: Purchase) => {
