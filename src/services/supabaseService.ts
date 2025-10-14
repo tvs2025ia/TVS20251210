@@ -580,11 +580,15 @@ export class SupabaseService {
         console.warn('Layaways table does not exist');
         return [];
       }
-  
-      const paymentsTable = await this.resolveLayawayPaymentsTable();
+    
+      // ✅ INCLUIR los pagos en la consulta
+      let query = supabase
+        .from('layaways')
+        .select(`
+          *,
+          layaway_payments(*)
+        `);
       
-      // ✅ SOLO necesitamos seleccionar de layaways ahora
-      let query = supabase.from('layaways').select('*');
       if (storeId) {
         query = query.eq('store_id', storeId);
       }
@@ -649,7 +653,6 @@ export class SupabaseService {
   }
 
   static async addLayawayPayment(layawayId: string, payment: LayawayPayment): Promise<LayawayPayment> {
-    const paymentsTable = await this.resolveLayawayPaymentsTable();
     const insertPayload = {
       id: payment.id,
       layaway_id: layawayId,
@@ -659,15 +662,15 @@ export class SupabaseService {
       employee_id: payment.employeeId,
       notes: payment.notes
     };
-
+  
     const { data, error } = await supabase
-      .from(paymentsTable)
+      .from('layaway_payments') // ✅ Usar el nombre directo
       .insert(insertPayload)
       .select('*')
       .single();
-
+  
     if (error) throw new Error(`Error saving layaway payment: ${error.message}`);
-
+  
     return {
       id: data.id,
       amount: data.amount,
@@ -1295,13 +1298,12 @@ export class SupabaseService {
   }
 
   private static mapSupabaseToLayaway(data: any): Layaway {
-    const payments = data.layaway_payments || data.Layaway_payments || [];
+    // ✅ Los pagos vendrán en data.layaway_payments
+    const payments = data.layaway_payments || [];
     
-    // ✅ LEER items desde JSON (nuevo) o desde relación legacy (backward compatibility)
     let items: LayawayItem[] = [];
     
     if (data.items_json) {
-      // ✅ NUEVO: Leer desde JSON
       items = data.items_json.map((item: any) => ({
         productId: item.productId,
         productName: item.productName,
@@ -1310,7 +1312,6 @@ export class SupabaseService {
         total: item.total
       }));
     } else if (data.layaway_items) {
-      // ✅ LEGACY: Leer desde relación (para separados existentes)
       items = data.layaway_items.map((item: any) => ({
         productId: item.product_id,
         productName: item.product_name,
@@ -1333,6 +1334,7 @@ export class SupabaseService {
       status: data.status,
       createdAt: new Date(data.created_at),
       employeeId: data.employee_id,
+      // ✅ Esto debería capturar los pagos correctamente
       payments: payments.map((payment: any) => ({
         id: payment.id,
         amount: payment.amount,

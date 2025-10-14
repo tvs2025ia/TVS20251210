@@ -33,7 +33,7 @@ export function Sales() {
   const { user } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
-  const [selectedMonth, setSelectedMonth] = useState('');
+  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth().toString());
   const [viewingSale, setViewingSale] = useState<Sale | null>(null);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [printingSale, setPrintingSale] = useState<Sale | null>(null);
@@ -331,7 +331,7 @@ export function Sales() {
             </div>
 
             {/* Actions */}
-            <div className="flex justify-end space-x-3">
+            <div className="flex flex-col sm:flex-row justify-end space-y-3 sm:space-y-0 sm:space-x-3">
               <button
                 onClick={onClose}
                 className="bg-gray-100 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200 transition-colors font-medium"
@@ -343,14 +343,14 @@ export function Sales() {
                   handlePrintReceipt(sale);
                   onClose();
                 }}
-                className="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 transition-colors flex items-center space-x-2 font-medium"
+                className="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 transition-colors flex items-center justify-center space-x-2 font-medium"
               >
                 <Download className="w-4 h-4" />
                 <span>Recibo Térmico</span>
               </button>
               <button
                 onClick={() => window.print()}
-                className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition-colors flex items-center space-x-2 font-medium"
+                className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition-colors flex items-center justify-center space-x-2 font-medium"
               >
                 <Download className="w-4 h-4" />
                 <span>Imprimir Detalle</span>
@@ -718,7 +718,7 @@ export function Sales() {
                 </div>
               </div>
 
-              <div className="flex space-x-3 pt-4">
+              <div className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-3 pt-4">
                 <button
                   type="button"
                   onClick={onClose}
@@ -827,7 +827,7 @@ export function Sales() {
           <Filter className="w-5 h-5 mr-2 text-blue-500" />
           Filtros de Búsqueda
         </h3>
-        <div className="flex flex-wrap gap-4 items-end">
+        <div className="flex flex-col lg:flex-row gap-4 items-end">
           <div className="flex-1 min-w-64">
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Buscar
@@ -844,49 +844,52 @@ export function Sales() {
             </div>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Año
-            </label>
-            <select
-              value={selectedYear}
-              onChange={(e) => setSelectedYear(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
-            >
-              <option value="">Todos los años</option>
-              {availableYears.map(year => (
-                <option key={year} value={year.toString()}>{year}</option>
-              ))}
-            </select>
-          </div>
+          <div className="flex flex-col sm:flex-row gap-4 w-full lg:w-auto">
+            <div className="flex-1">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Año
+              </label>
+              <select
+                value={selectedYear}
+                onChange={(e) => setSelectedYear(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+              >
+                <option value="">Todos los años</option>
+                {availableYears.map(year => (
+                  <option key={year} value={year.toString()}>{year}</option>
+                ))}
+              </select>
+            </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Mes
-            </label>
-            <select
-              value={selectedMonth}
-              onChange={(e) => setSelectedMonth(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
-            >
-              <option value="">Todos los meses</option>
-              {months.map(month => (
-                <option key={month.value} value={month.value}>{month.label}</option>
-              ))}
-            </select>
-          </div>
+            <div className="flex-1">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Mes
+              </label>
+              <select
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+              >
+                {months.map(month => (
+                  <option key={month.value} value={month.value}>{month.label}</option>
+                ))}
+              </select>
+            </div>
 
-          <button
-            onClick={() => {
-              setSearchTerm('');
-              setSelectedYear(new Date().getFullYear().toString());
-              setSelectedMonth('');
-            }}
-            className="bg-gray-100 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200 transition-colors flex items-center space-x-2"
-          >
-            <X className="w-4 h-4" />
-            <span>Limpiar</span>
-          </button>
+            <div className="flex items-end">
+              <button
+                onClick={() => {
+                  setSearchTerm('');
+                  setSelectedYear(new Date().getFullYear().toString());
+                  setSelectedMonth(new Date().getMonth().toString());
+                }}
+                className="w-full bg-gray-100 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200 transition-colors flex items-center justify-center space-x-2"
+              >
+                <X className="w-4 h-4" />
+                <span>Limpiar</span>
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -904,31 +907,31 @@ export function Sales() {
       {/* Sales Table */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full">
+          <table className="w-full min-w-[800px]">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Factura
                 </th>
-                <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Cliente
                 </th>
-                <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Vendedor
                 </th>
-                <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Productos
                 </th>
-                <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Método de Pago
                 </th>
-                <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Total
                 </th>
-                <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Fecha
                 </th>
-                <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Acciones
                 </th>
               </tr>
@@ -936,7 +939,7 @@ export function Sales() {
             <tbody className="bg-white divide-y divide-gray-200">
               {filteredSales.map(sale => (
                 <tr key={sale.id} className="hover:bg-gray-50 transition-colors group">
-                  <td className="px-6 py-4 whitespace-nowrap">
+                  <td className="px-4 py-3 whitespace-nowrap">
                     <div className="flex items-center">
                       <div className="p-1 bg-blue-100 rounded mr-3 group-hover:bg-blue-200 transition-colors">
                         <FileText className="w-4 h-4 text-blue-600" />
@@ -947,18 +950,18 @@ export function Sales() {
                       </div>
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
+                  <td className="px-4 py-3 whitespace-nowrap">
                     <div className="flex items-center">
                       <User className="w-4 h-4 text-gray-400 mr-2" />
                       <span className="text-sm text-gray-900">{getCustomerName(sale.customerId)}</span>
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
+                  <td className="px-4 py-3 whitespace-nowrap">
                     <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                       {getEmployeeName(sale.employeeId)}
                     </span>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                  <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
                     <div>
                       <span className="font-medium">{sale.items.length}</span> productos
                     </div>
@@ -966,12 +969,12 @@ export function Sales() {
                       {sale.items.reduce((sum, item) => sum + item.quantity, 0)} unidades
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
+                  <td className="px-4 py-3 whitespace-nowrap">
                     <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
                       {sale.paymentMethod}
                     </span>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
+                  <td className="px-4 py-3 whitespace-nowrap">
                     <div className="text-sm font-semibold text-gray-900">{formatCurrency(sale.total)}</div>
                     {sale.paymentMethodDiscount > 0 && (
                       <div className="text-xs text-green-600">
@@ -979,7 +982,7 @@ export function Sales() {
                       </div>
                     )}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
+                  <td className="px-4 py-3 whitespace-nowrap">
                     <div className="flex items-center text-sm text-gray-900">
                       <Clock className="w-4 h-4 text-gray-400 mr-1" />
                       <div>
@@ -990,8 +993,8 @@ export function Sales() {
                       </div>
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                    <div className="flex items-center space-x-2">
+                  <td className="px-4 py-3 whitespace-nowrap text-sm font-medium">
+                    <div className="flex items-center space-x-1">
                       <button
                         onClick={() => setViewingSale(sale)}
                         className="text-blue-500 hover:text-blue-700 transition-colors flex items-center space-x-1 p-1 rounded hover:bg-blue-50"
@@ -1044,16 +1047,16 @@ export function Sales() {
             </div>
             <p className="text-gray-500 text-lg font-medium">No se encontraron ventas</p>
             <p className="text-gray-400 text-sm mt-2 max-w-md mx-auto">
-              {searchTerm || selectedMonth || selectedYear !== new Date().getFullYear().toString()
+              {searchTerm || selectedMonth !== new Date().getMonth().toString() || selectedYear !== new Date().getFullYear().toString()
                 ? "Intenta ajustar los filtros para ver más resultados"
                 : "Realiza algunas ventas para ver los registros aquí"}
             </p>
-            {(searchTerm || selectedMonth || selectedYear !== new Date().getFullYear().toString()) && (
+            {(searchTerm || selectedMonth !== new Date().getMonth().toString() || selectedYear !== new Date().getFullYear().toString()) && (
               <button
                 onClick={() => {
                   setSearchTerm('');
                   setSelectedYear(new Date().getFullYear().toString());
-                  setSelectedMonth('');
+                  setSelectedMonth(new Date().getMonth().toString());
                 }}
                 className="mt-4 bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition-colors"
               >
@@ -1143,19 +1146,19 @@ export function Sales() {
               </div>
             )}
 
-            <div className="flex space-x-2 mt-4">
+            <div className="flex flex-col space-y-2 mt-4">
               <button
                 onClick={() => {
                   setShowReceiptModal(false);
                   setPrintingSale(null);
                 }}
-                className="flex-1 bg-gray-100 text-gray-700 py-2 rounded-lg hover:bg-gray-200 transition-colors font-medium"
+                className="bg-gray-100 text-gray-700 py-2 rounded-lg hover:bg-gray-200 transition-colors font-medium"
               >
                 Cancelar
               </button>
               <button
                 onClick={printThermalReceipt}
-                className="flex-1 bg-green-500 text-white py-2 rounded-lg hover:bg-green-600 transition-colors font-medium"
+                className="bg-green-500 text-white py-2 rounded-lg hover:bg-green-600 transition-colors font-medium"
               >
                 Imprimir
               </button>
