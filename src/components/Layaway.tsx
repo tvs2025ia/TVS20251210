@@ -65,17 +65,19 @@ export function LayawayComponent() {
     }).format(amount);
   };
 
-  // Función para calcular los totales actualizados de un layaway
+  // Función para calcular los totales actualizados de un layaway (SOLO VISUAL)
   const calculateLayawayTotals = (layaway: Layaway) => {
     const totalPaid = layaway.payments.reduce((sum, payment) => sum + payment.amount, 0);
     const remainingBalance = layaway.total - totalPaid;
-    const status = remainingBalance <= 0 ? 'completed' : layaway.status;
-    
-    return {
+  
+    // ✅ SOLO VISUAL: Si saldo es 0, mostrar como completado
+    const displayStatus = remainingBalance <= 0 ? 'completed' : layaway.status;
+  
+   return {
       ...layaway,
-      totalPaid,
+     totalPaid,
       remainingBalance: Math.max(0, remainingBalance),
-      status
+      status: displayStatus // ✅ Solo para mostrar, no se guarda en BD
     };
   };
 
