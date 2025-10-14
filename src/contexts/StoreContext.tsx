@@ -34,9 +34,22 @@ export function StoreProvider({ children }: StoreProviderProps) {
   const [isLoading, setIsLoading] = useState(true);
   const { user } = useAuth();
 
-  useEffect(() => {
-    loadStores();
-  }, []);
+    // ⚡ Restaurar tienda desde localStorage
+    useEffect(() => {
+      const cached = localStorage.getItem('current_store');
+      if (cached) {
+        const store = JSON.parse(cached);
+        setCurrentStoreState(store);
+        console.log('🏪 Tienda restaurada desde localStorage:', store.name);
+      } else {
+        loadStores(); // Si no hay cache, cargar desde Supabase
+      }
+    }, []);
+  
+    // Cargar tiendas desde Supabase
+    useEffect(() => {
+      loadStores();
+    }, []);
 
   useEffect(() => {
     // Set first active store as default when stores are loaded
@@ -110,6 +123,7 @@ useEffect(() => {
   const setCurrentStore = (store: Store) => {
     console.log('🏪 Cambiando tienda actual a:', store.name);
     setCurrentStoreState(store);
+    localStorage.setItem('current_store', JSON.stringify(store));
   };
 
   const addStore = async (store: Store) => {

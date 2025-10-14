@@ -31,6 +31,7 @@ export interface Product {
   minStock: number;
   storeId: string;
   imageUrl?: string;
+  image?: string;
 }
 
 export interface PaymentMethod {
