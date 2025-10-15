@@ -529,7 +529,7 @@ import {
           return [];
         }
 
-        let query = supabase.from('quotes').select('*, quotes_items(*)');
+        let query = supabase.from('quotes').select('*, quote_items(*)');
         if (storeId) {
           query = query.eq('store_id', storeId);
         }
@@ -568,7 +568,7 @@ import {
 
       // Delete existing items before inserting new ones
       const { error: deleteItemsError } = await supabase
-        .from('quotes_items')
+        .from('quote_items')
         .delete()
         .eq('quote_id', quote.id);
 
@@ -588,7 +588,7 @@ import {
 
       if (quoteItems.length > 0) {
         const { error: itemsError } = await supabase
-          .from('quotes_items')
+          .from('quote_items')
           .insert(quoteItems);
 
         if (itemsError) throw new Error(`Error saving quote items: ${itemsError.message}`);
@@ -607,7 +607,7 @@ import {
         storeId: data.store_id,
         customerId: data.customer_id,
         employeeId: data.employee_id,
-        items: (data.quotes_items || []).map((item: any) => ({
+        items: (data.quote_items || []).map((item: any) => ({
           productId: item.product_id,
           productName: item.product_name,
           quantity: item.quantity,
