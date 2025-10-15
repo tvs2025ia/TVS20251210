@@ -133,7 +133,7 @@ export function Sales() {
           position: absolute;
           left: 0;
           top: 0;
-          width: ${width}mm !important;
+          width: 50mm !important;
           font-size: ${fontSize}px;
           line-height: 1.2;
           background: white;
