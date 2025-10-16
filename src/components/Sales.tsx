@@ -119,31 +119,52 @@ export function Sales() {
   const { totalSales, totalRevenue, totalItems } = getTotalsByPeriod();
 
   // Estilos de impresión para recibo térmico
+  // Estilos de impresión para recibo térmico (optimizado 58 mm)
   useEffect(() => {
     const style = document.createElement('style');
     const template = activeReceiptTemplate;
-    const width = template?.thermalWidth || 58;
+    const width = template?.thermalWidth || 48; // ancho útil real
     const fontSize = template?.fontSize || 11;
-
+  
     style.innerHTML = `
       @media print {
-        body * { visibility: hidden !important; }
-        #sales-receipt, #sales-receipt * { visibility: visible !important; }
+        body * {
+          visibility: hidden !important;
+        }
+
+        #sales-receipt, #sales-receipt * {
+          visibility: visible !important;
+        }
+  
         #sales-receipt {
           position: absolute;
           left: 0;
           top: 0;
-          width: 50mm !important;
+          width: ${width}mm !important;
+          max-width: ${width}mm !important;
           font-size: ${fontSize}px;
           line-height: 1.2;
           background: white;
-          padding: 5px;
+          padding: 2mm;
+          box-sizing: border-box;
+          overflow: visible !important;
+          white-space: normal !important;
+        }
+
+        #sales-receipt div {
+          word-break: break-word !important;
+        }
+
+        #sales-receipt .flex {
+          flex-wrap: wrap !important;
         }
       }
-    `;
-    document.head.appendChild(style);
-    return () => { document.head.removeChild(style); };
-  }, [activeReceiptTemplate]);
+      `;
+      document.head.appendChild(style);
+      return () => {
+        document.head.removeChild(style);
+      };
+    }, [activeReceiptTemplate]);
 
   const handlePrintReceipt = (sale: Sale) => {
     setPrintingSale(sale);
@@ -1115,10 +1136,14 @@ export function Sales() {
 
             {/* Item Details */}
             {activeReceiptTemplate?.showItemDetails && printingSale.items.map(item => (
-              <div key={item.productId} className="flex justify-between">
-                <span>{item.productName} x{item.quantity}</span>
-                <span>{formatCurrency(item.total)}</span>
-              </div>
+              <div key={item.productId} className="flex justify-between items-start flex-wrap w-full">
+                <span className="max-w-[60%] break-words">
+                {item.productName} x{item.quantity}
+                </span>
+                <span className="text-right min-w-[35%]">
+                {formatCurrency(item.total)}
+                </span>
+                </div>
             ))}
 
             <hr className="my-2" />
