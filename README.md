@@ -9,4 +9,28 @@ quieres que el usuario pueda ingresar a cualquiera de las tiendas, pero al inici
 
 
 login:
-  Usa IndexedDB junto con supabase para el manejo de usuarios, eliminar usuarios mock
+  Usa IndexedDB junto con supabase para el manejo de usuarios, eliminar usuarios mock, todos la informacion Mock
+
+Compras
+  Deseo que el costo del inventario se actualice usando el promedio ponderado.
+
+Transferencias
+  Crear un nuevo módulo visual “Transferencias”
+
+Puedes hacer una nueva página tipo Transfers.tsx (similar a Purchases.tsx):
+
+Seleccionas tienda origen y destino (fromStoreId y toStoreId)
+
+Seleccionas producto(s) y cantidad
+
+Botón “Ejecutar Transferencia”
+
+Llama a transferStock() por cada producto seleccionado
+
+Esto te permitiría:
+
+Registrar un historial de movimientos (igual que con compras)
+
+Tener un control auditable de traslados
+
+Evitar que se mezclen con compras normales
