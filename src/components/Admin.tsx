@@ -819,7 +819,129 @@ export function Admin() {
       </div>
     );
   };
-
+  const PaymentMethodModal = ({ payment, onClose, onSave }: {
+    payment?: PaymentMethod;
+    onClose: () => void;
+    onSave: (payment: PaymentMethod) => void;
+  }) => {
+    const [formData, setFormData] = useState({
+      name: payment?.name || '',
+      discountPercentage: payment?.discountPercentage || 0,
+      isActive: payment?.isActive ?? true
+    });
+    const [saving, setSaving] = useState(false);
+  
+    const handleSubmit = async (e: React.FormEvent) => {
+      e.preventDefault();
+  
+      if (!formData.name) {
+        alert('El nombre del método de pago es requerido');
+        return;
+      }
+  
+      if (formData.discountPercentage < 0 || formData.discountPercentage > 100) {
+        alert('El descuento debe estar entre 0 y 100%');
+        return;
+      }
+  
+      setSaving(true);
+  
+      try {
+        const paymentData: PaymentMethod = {
+          id: payment?.id || crypto.randomUUID(),
+          ...formData
+        };
+  
+        onSave(paymentData);
+        onClose();
+      } catch (error) {
+        alert('Error guardando método de pago: ' + (error instanceof Error ? error.message : 'Error desconocido'));
+      } finally {
+        setSaving(false);
+      }
+    };
+  
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-xl max-w-md w-full p-6">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-xl font-bold text-gray-900">
+              {payment ? 'Editar Método de Pago' : 'Nuevo Método de Pago'}
+            </h3>
+            <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
+              <X className="w-6 h-6" />
+            </button>
+          </div>
+  
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Nombre del Método *
+              </label>
+              <input
+                type="text"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="Ej: Efectivo, Tarjeta, Transferencia"
+                required
+              />
+            </div>
+  
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Descuento (%)
+              </label>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                step="0.01"
+                value={formData.discountPercentage}
+                onChange={(e) => setFormData({ ...formData, discountPercentage: parseFloat(e.target.value) || 0 })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="0.00"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Descuento aplicado automáticamente al usar este método
+              </p>
+            </div>
+  
+            <div className="flex items-center">
+              <input
+                type="checkbox"
+                id="paymentActive"
+                checked={formData.isActive}
+                onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
+                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+              />
+              <label htmlFor="paymentActive" className="ml-2 block text-sm text-gray-700">
+                Método activo
+              </label>
+            </div>
+  
+            <div className="flex space-x-3 pt-4 border-t">
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg hover:bg-gray-300 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={saving}
+                className="flex-1 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors flex items-center justify-center space-x-2"
+              >
+                {saving && <Save className="w-4 h-4 animate-spin" />}
+                <span>{saving ? 'Guardando...' : (payment ? 'Actualizar' : 'Crear')}</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    );
+  };
   const tabs = [
     { id: 'users', name: 'Usuarios', icon: Users },
     { id: 'stores', name: 'Tiendas', icon: StoreIcon },
@@ -1387,6 +1509,20 @@ export function Admin() {
           onSave={(supplier) => updateSupplier(supplier)}
         />
       )}
+      {showPaymentModal && (
+        <PaymentMethodModal
+        onClose={() => setShowPaymentModal(false)}
+        onSave={(payment) => addPaymentMethod(payment)}
+        />
+        )}
+
+      {editingPayment && (
+        <PaymentMethodModal
+        payment={editingPayment}
+        onClose={() => setEditingPayment(null)}
+        onSave={(payment) => updatePaymentMethod(payment)}
+        />
+        )}
     </div>
   );
 }
