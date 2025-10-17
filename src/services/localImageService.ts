@@ -1,129 +1,99 @@
 /**
- * Local Image Service - Saves images to public/img folder
- * This avoids using Supabase Storage and saves memory/costs
+ * PHP Image Service - Saves images to hosting via PHP endpoint
+ * Uploads optimized images to https://tienda.gioeroticshop.co/img/
  */
 
 export class LocalImageService {
+  // 🔧 CONFIGURACIÓN - Cambia esta URL a tu dominio
+  private static readonly PHP_ENDPOINT = 'https://tienda.gioeroticshop.co/upload-image.php';
   private static readonly BASE_PATH = '/img/';
-  private static readonly UPLOAD_PATH = 'public/img/';
 
   /**
-   * Saves an image file to public/img and returns the public URL
+   * Saves an image file to the PHP server and returns the public URL
    */
   static async saveProductImage(file: File, productId: string): Promise<string> {
     try {
-      console.log(`📷 Guardando imagen para producto ${productId} localmente...`);
+      console.log(`📷 Subiendo imagen para producto ${productId} al servidor PHP...`);
       
       // Generate unique filename
-      const fileExt = file.name.split('.').pop() || 'jpg';
+      const fileExt = file.name.split('.').pop()?.toLowerCase() || 'jpg';
       const timestamp = Date.now();
       const random = Math.random().toString(36).substring(2, 8);
       const fileName = `product_${productId}_${timestamp}_${random}.${fileExt}`;
       
-      // Convert file to base64 for storage simulation
+      // Convert file to base64
       const base64Data = await this.fileToBase64(file);
       
-      // Save to localStorage as simulation (in real app, this would be a server endpoint)
-      const imageData = {
-        fileName,
-        data: base64Data,
-        contentType: file.type,
-        size: file.size,
-        productId,
-        uploadedAt: new Date().toISOString()
-      };
+      // Send to PHP endpoint
+      const response = await fetch(this.PHP_ENDPOINT, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          image: base64Data,
+          filename: fileName,
+          productId: productId
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Error del servidor: ${response.status}`);
+      }
+
+      const result = await response.json();
       
-      // Store in localStorage with key for the filename
-      localStorage.setItem(`local_image_${fileName}`, JSON.stringify(imageData));
-      
-      // Also keep a registry of all images
-      const registry = this.getImageRegistry();
-      registry[fileName] = {
-        productId,
-        fileName,
-        uploadedAt: imageData.uploadedAt,
-        size: file.size
-      };
-      localStorage.setItem('local_images_registry', JSON.stringify(registry));
-      
-      const publicUrl = `${this.BASE_PATH}${fileName}`;
-      
-      console.log(`✅ Imagen guardada localmente: ${publicUrl}`);
-      
-      // Create a blob URL for immediate display
-      const blobUrl = URL.createObjectURL(file);
-      
-      // Store mapping for serving
-      this.storeImageMapping(fileName, blobUrl);
+      if (!result.success) {
+        throw new Error(result.error || 'Error desconocido al subir la imagen');
+      }
+
+      const publicUrl = result.url;
+      console.log(`✅ Imagen guardada en servidor: ${publicUrl}`);
       
       return publicUrl;
       
     } catch (error) {
-      console.error('Error guardando imagen localmente:', error);
+      console.error('Error subiendo imagen al servidor:', error);
       throw new Error(`Error guardando imagen: ${error instanceof Error ? error.message : 'Error desconocido'}`);
     }
   }
 
   /**
-   * Get image URL for display (handles both stored and blob URLs)
+   * Get image URL for display (now just returns the path as-is since images are on server)
    */
   static getImageUrl(imagePath: string): string {
-    if (imagePath.startsWith('blob:')) {
-      return imagePath; // Already a blob URL
+    // Si ya es una URL completa, retornarla tal cual
+    if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
+      return imagePath;
     }
     
-    if (imagePath.startsWith(this.BASE_PATH)) {
-      const fileName = imagePath.replace(this.BASE_PATH, '');
-      
-      // Try to get from blob URL mapping first
-      const blobMapping = this.getImageMapping();
-      if (blobMapping[fileName]) {
-        return blobMapping[fileName];
-      }
-      
-      // Try to reconstruct from localStorage
-      const imageData = localStorage.getItem(`local_image_${fileName}`);
-      if (imageData) {
-        try {
-          const parsed = JSON.parse(imageData);
-          return `data:${parsed.contentType};base64,${parsed.data}`;
-        } catch (e) {
-          console.warn('Error parsing stored image data:', e);
-        }
-      }
-    }
-    
-    return imagePath; // Return as-is if can't resolve
+    // Si es una ruta relativa, retornarla tal cual (el navegador la resolverá)
+    return imagePath;
   }
 
   /**
-   * Delete an image from local storage
+   * Delete an image from the server
+   * NOTE: This requires a separate PHP endpoint for deletion
    */
-  static deleteImage(imagePath: string): boolean {
+  static async deleteImage(imagePath: string): Promise<boolean> {
     try {
-      if (imagePath.startsWith(this.BASE_PATH)) {
-        const fileName = imagePath.replace(this.BASE_PATH, '');
-        
-        // Remove from localStorage
-        localStorage.removeItem(`local_image_${fileName}`);
-        
-        // Remove from registry
-        const registry = this.getImageRegistry();
-        delete registry[fileName];
-        localStorage.setItem('local_images_registry', JSON.stringify(registry));
-        
-        // Remove from blob mapping
-        const blobMapping = this.getImageMapping();
-        if (blobMapping[fileName]) {
-          URL.revokeObjectURL(blobMapping[fileName]); // Clean up blob URL
-          delete blobMapping[fileName];
-          localStorage.setItem('local_images_blob_mapping', JSON.stringify(blobMapping));
-        }
-        
-        console.log(`🗑️ Imagen eliminada: ${fileName}`);
-        return true;
+      console.log(`🗑️ Eliminando imagen: ${imagePath}`);
+      
+      // Extrae el nombre del archivo
+      const fileName = imagePath.split('/').pop();
+      
+      if (!fileName) {
+        console.warn('No se pudo extraer el nombre del archivo');
+        return false;
       }
-      return false;
+
+      // TODO: Implementar endpoint PHP para eliminar imágenes
+      // Por ahora, solo registra en consola
+      console.log(`⚠️ La eliminación física requiere implementar un endpoint PHP de eliminación`);
+      console.log(`Archivo a eliminar: ${fileName}`);
+      
+      return true;
     } catch (error) {
       console.error('Error eliminando imagen:', error);
       return false;
@@ -132,6 +102,7 @@ export class LocalImageService {
 
   /**
    * Get list of all stored images
+   * NOTE: This requires a PHP endpoint to list images
    */
   static getStoredImages(): Array<{
     fileName: string;
@@ -139,50 +110,30 @@ export class LocalImageService {
     uploadedAt: string;
     size: number;
   }> {
-    const registry = this.getImageRegistry();
-    return Object.values(registry);
+    console.warn('getStoredImages() requiere implementar un endpoint PHP para listar imágenes');
+    return [];
   }
 
   /**
    * Get total storage used by images
+   * NOTE: This requires a PHP endpoint to calculate storage
    */
   static getTotalStorageUsed(): { count: number; totalSize: number; formattedSize: string } {
-    const images = this.getStoredImages();
-    const totalSize = images.reduce((sum, img) => sum + img.size, 0);
-    
-    const formatSize = (bytes: number): string => {
-      if (bytes === 0) return '0 B';
-      const k = 1024;
-      const sizes = ['B', 'KB', 'MB', 'GB'];
-      const i = Math.floor(Math.log(bytes) / Math.log(k));
-      return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
-    };
-
+    console.warn('getTotalStorageUsed() requiere implementar un endpoint PHP');
     return {
-      count: images.length,
-      totalSize,
-      formattedSize: formatSize(totalSize)
+      count: 0,
+      totalSize: 0,
+      formattedSize: '0 B'
     };
   }
 
   /**
    * Clean up old or orphaned images
+   * NOTE: This requires a PHP endpoint for cleanup
    */
-  static cleanupImages(maxAgeHours = 24 * 7): number { // Default: 1 week
-    const registry = this.getImageRegistry();
-    const cutoffTime = new Date(Date.now() - maxAgeHours * 60 * 60 * 1000);
-    let cleaned = 0;
-
-    Object.entries(registry).forEach(([fileName, data]) => {
-      const uploadTime = new Date(data.uploadedAt);
-      if (uploadTime < cutoffTime) {
-        this.deleteImage(`${this.BASE_PATH}${fileName}`);
-        cleaned++;
-      }
-    });
-
-    console.log(`🧹 Limpieza completada: ${cleaned} imágenes eliminadas`);
-    return cleaned;
+  static cleanupImages(maxAgeHours = 24 * 7): number {
+    console.warn('cleanupImages() requiere implementar un endpoint PHP');
+    return 0;
   }
 
   // Private helper methods
@@ -191,36 +142,11 @@ export class LocalImageService {
       const reader = new FileReader();
       reader.onload = () => {
         const result = reader.result as string;
-        // Remove data URL prefix to get just the base64 data
-        const base64Data = result.split(',')[1];
-        resolve(base64Data);
+        // Mantiene el prefijo data:image/xxx;base64, para que PHP lo procese
+        resolve(result);
       };
       reader.onerror = reject;
       reader.readAsDataURL(file);
     });
-  }
-
-  private static getImageRegistry(): Record<string, any> {
-    try {
-      const registry = localStorage.getItem('local_images_registry');
-      return registry ? JSON.parse(registry) : {};
-    } catch {
-      return {};
-    }
-  }
-
-  private static storeImageMapping(fileName: string, blobUrl: string): void {
-    const mapping = this.getImageMapping();
-    mapping[fileName] = blobUrl;
-    localStorage.setItem('local_images_blob_mapping', JSON.stringify(mapping));
-  }
-
-  private static getImageMapping(): Record<string, string> {
-    try {
-      const mapping = localStorage.getItem('local_images_blob_mapping');
-      return mapping ? JSON.parse(mapping) : {};
-    } catch {
-      return {};
-    }
   }
 }
