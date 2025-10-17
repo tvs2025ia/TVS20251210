@@ -81,6 +81,10 @@ export function Quotes() {
     return matchesSearch && matchesStatus;
   });
 
+  const sortedQuotes = [...filteredQuotes].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
+
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('es-CO', {
       style: 'currency',
