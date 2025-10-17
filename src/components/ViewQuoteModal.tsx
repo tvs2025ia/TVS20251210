@@ -1,6 +1,7 @@
 import React from 'react';
 import { Quote, Customer } from '../types';
-import { X, Check, Zap } from 'lucide-react';
+import { X, Check, Zap, Download, Printer } from 'lucide-react';
+import { generateQuotePDF } from './QuotePDFGenerator';
 
 interface ViewQuoteModalProps {
   quote: Quote;
@@ -25,6 +26,7 @@ export function ViewQuoteModal({
 }: ViewQuoteModalProps) {
   const customer = storeCustomers.find(c => c.id === quote.customerId);
   const isExpired = new Date() > new Date(quote.validUntil);
+  const [isGeneratingPDF, setIsGeneratingPDF] = React.useState(false);
 
   const updateStatus = (newStatus: Quote['status']) => {
     updateQuote({ ...quote, status: newStatus });
@@ -38,6 +40,37 @@ export function ViewQuoteModal({
   const handleConvertToSale = () => {
     if (confirm('¿Estás seguro de convertir esta cotización en una venta?')) {
       convertToSale(quote);
+    }
+  };
+
+  const handleDownloadPDF = async () => {
+    if (!customer) {
+      alert('Error: No se encontró información del cliente');
+      return;
+    }
+
+    setIsGeneratingPDF(true);
+    
+    try {
+      // Simular un pequeño delay para mostrar el loading
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      generateQuotePDF({
+        quote,
+        customer,
+        storeName: 'Gio Erotic Shop',
+        storePhone: '+57 300 123 4567', // Puedes cambiar estos datos
+        storeAddress: 'Calle Principal #123, Ciudad',
+        storeEmail: 'ventas@gioeroticshop.com'
+      });
+
+      // Mostrar mensaje de éxito
+      alert('✅ PDF descargado exitosamente');
+    } catch (error) {
+      console.error('Error generando PDF:', error);
+      alert('❌ Error al generar el PDF. Por favor intenta nuevamente.');
+    } finally {
+      setIsGeneratingPDF(false);
     }
   };
 
@@ -123,13 +156,25 @@ export function ViewQuoteModal({
               </div>
             </div>
 
-            {/* Botón imprimir */}
-            <button
-              onClick={handlePrint}
-              className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors no-print"
-            >
-              Imprimir Cotización
-            </button>
+            {/* Botones de descarga e impresión */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 no-print">
+              <button
+                onClick={handleDownloadPDF}
+                disabled={isGeneratingPDF}
+                className="bg-purple-600 text-white py-2 px-4 rounded-lg hover:bg-purple-700 transition-colors flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Download className="w-4 h-4" />
+                <span>{isGeneratingPDF ? 'Generando PDF...' : 'Descargar PDF'}</span>
+              </button>
+              
+              <button
+                onClick={handlePrint}
+                className="bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center space-x-2"
+              >
+                <Printer className="w-4 h-4" />
+                <span>Imprimir</span>
+              </button>
+            </div>
 
             {/* Botón convertir en venta (solo para cotizaciones pendientes o aceptadas) */}
             {(quote.status === 'accepted' || quote.status === 'pending') && !isExpired && (
