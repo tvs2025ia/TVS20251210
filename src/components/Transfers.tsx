@@ -2,26 +2,22 @@ import React, { useState } from 'react';
 import { 
   ArrowRightLeft, 
   Plus, 
-  Search, 
   Store, 
-  Package,
-  Calendar,
   Eye,
   X,
   Minus,
   CheckCircle,
   Clock,
   XCircle,
-  Filter
 } from 'lucide-react';
 import { useData } from '../contexts/DataContext';
 import { useStore } from '../contexts/StoreContext';
 import { useAuth } from '../contexts/AuthContext';
-import { Product, Transfer } from '../types';
+import { Transfer } from '../types';
 
 export default function Transfers() {
-  const { products, stores, transfers, addTransfer, updateTransfer } = useData();
-  const { currentStore } = useStore();
+  const { products, transfers, addTransfer, updateTransfer } = useData();
+  const { currentStore, stores } = useStore(); // ✅ Agregar stores desde useStore
   const { user } = useAuth();
 
   const [searchTerm, setSearchTerm] = useState('');
@@ -193,17 +189,21 @@ export default function Transfers() {
         );
 
         if (originProduct) {
-          await updateTransfer({
-            ...newTransfer,
-            status: 'pending'
-          });
-          originProduct.stock -= item.quantity;
-          await updateTransfer(originProduct);
+          // ✅ Corregido: Actualizar producto, no transferencia
+          const updatedProduct = {
+            ...originProduct,
+            stock: originProduct.stock - item.quantity
+          };
+          await updateTransfer(updatedProduct);
         }
 
         if (destProduct) {
-          destProduct.stock += item.quantity;
-          await updateTransfer(destProduct);
+          // ✅ Corregido: Actualizar producto, no transferencia
+          const updatedProduct = {
+            ...destProduct,
+            stock: destProduct.stock + item.quantity
+          };
+          await updateTransfer(updatedProduct);
         }
       }
 
@@ -236,7 +236,7 @@ export default function Transfers() {
                     }}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   >
-                    {stores.filter(s => s.isActive).map(s => (
+                    {stores.filter((s: any) => s.isActive).map((s: any) => (
                       <option key={s.id} value={s.id}>
                         {s.name}
                       </option>
@@ -254,8 +254,8 @@ export default function Transfers() {
                   >
                     <option value="">Seleccionar tienda</option>
                     {stores
-                      .filter(s => s.isActive && s.id !== fromStoreId)
-                      .map(s => (
+                      .filter((s: any) => s.isActive && s.id !== fromStoreId)
+                      .map((s: any) => (
                         <option key={s.id} value={s.id}>
                           {s.name}
                         </option>
@@ -391,8 +391,8 @@ export default function Transfers() {
     transfer: Transfer;
     onClose: () => void;
   }) => {
-    const fromStore = stores.find(s => s.id === transfer.fromStoreId);
-    const toStore = stores.find(s => s.id === transfer.toStoreId);
+    const fromStore = stores.find((s: any) => s.id === transfer.fromStoreId);
+    const toStore = stores.find((s: any) => s.id === transfer.toStoreId);
 
     const handleStatusChange = async (newStatus: Transfer['status']) => {
       await updateTransfer({
@@ -536,9 +536,9 @@ export default function Transfers() {
                 </tr>
               </thead>
               <tbody>
-                {storeTransfers.map(t => {
-                  const fromStore = stores.find((s: Store) => s.id === t.fromStoreId);
-                  const toStore = stores.find((s: Store) => s.id === t.toStoreId);
+                {filteredTransfers.map(t => { // ✅ Usar filteredTransfers en lugar de storeTransfers
+                  const fromStore = stores.find((s: any) => s.id === t.fromStoreId);
+                  const toStore = stores.find((s: any) => s.id === t.toStoreId);
                   return (
                     <tr key={t.id} className="border-t">
                       <td className="px-4 py-3">{t.id.slice(0, 8)}</td>
