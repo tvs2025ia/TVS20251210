@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { Product, Sale, Customer, Expense, Quote, Purchase, PaymentMethod, User, Supplier, CashRegister, CashMovement, ReceiptTemplate, Layaway, LayawayPayment } from '../types';
+import { Product, Sale, Customer, Expense, Quote, Purchase, PaymentMethod, User, Supplier, CashRegister, CashMovement, ReceiptTemplate, Layaway, LayawayPayment, Transfer } from '../types';
 import { SupabaseService } from '../services/supabaseService';
 import { OfflineService } from '../services/offlineService';
 import { SyncService } from '../services/syncService';
@@ -7,6 +7,7 @@ import { useAuth } from './AuthContext';
 
 interface DataContextType {
   products: Product[];
+  transfers: Transfer[];
   sales: Sale[];
   customers: Customer[];
   expenses: Expense[];
@@ -72,6 +73,9 @@ interface DataContextType {
   // ✅ Nuevas funciones para carga progresiva
   loadCriticalData: () => Promise<void>;
   loadSecondaryData: () => Promise<void>;
+  addTransfer: (transfer: Transfer) => Promise<void>;
+  updateTransfer: (transfer: Transfer) => Promise<void>;
+  deleteTransfer: (id: string) => Promise<void>;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -223,6 +227,8 @@ export function DataProvider({ children }: DataProviderProps) {
   const [cashRegisters, setCashRegisters] = useState<CashRegister[]>([]);
   const [cashMovements, setCashMovements] = useState<CashMovement[]>([]);
   const [layaways, setLayaways] = useState<Layaway[]>([]);
+  const [transfers, setTransfers] = useState<Transfer[]>([]);
+
 
   // Load all data including users, suppliers, etc.
   useEffect(() => {
@@ -1500,6 +1506,70 @@ export function DataProvider({ children }: DataProviderProps) {
     return receiptTemplates.find(rt => rt.storeId === storeId && rt.isActive) || null;
   };
 
+  // 🟢 NUEVO PARA TRANSFERENCIAS
+const addTransfer = async (transfer: Transfer) => {
+  try {
+    setTransfers(prev => [transfer, ...prev]);
+
+    // Ajustar stock origen/destino
+    const stockUpdates: Record<string, number> = {};
+
+    transfer.items.forEach(item => {
+      const origin = products.find(p => p.id === item.productId && p.storeId === transfer.fromStoreId);
+      const dest = products.find(p => p.sku === item.productSku && p.storeId === transfer.toStoreId);
+
+      if (origin) {
+        origin.stock = Math.max(0, origin.stock - item.quantity);
+        stockUpdates[origin.id] = origin.stock;
+      }
+
+      if (dest) {
+        dest.stock += item.quantity;
+        stockUpdates[dest.id] = dest.stock;
+      }
+    });
+
+    setProducts(prev =>
+      prev.map(p => stockUpdates[p.id] !== undefined ? { ...p, stock: stockUpdates[p.id] } : p)
+    );
+
+    if (isConnected) {
+      await SupabaseService.saveTransfer(transfer);
+      for (const [productId, stock] of Object.entries(stockUpdates)) {
+        await SupabaseService.updateProductStock(productId, stock);
+      }
+    }
+
+    console.log('Transferencia guardada:', transfer.id);
+  } catch (error) {
+    console.error('Error guardando transferencia:', error);
+  }
+};
+
+const updateTransfer = async (updated: Transfer) => {
+  try {
+    setTransfers(prev => prev.map(t => t.id === updated.id ? updated : t));
+    if (isConnected) {
+      await SupabaseService.saveTransfer(updated);
+    }
+    console.log('Transferencia actualizada:', updated.id);
+  } catch (error) {
+    console.error('Error actualizando transferencia:', error);
+  }
+};
+
+const deleteTransfer = async (id: string) => {
+  try {
+    setTransfers(prev => prev.filter(t => t.id !== id));
+    if (isConnected) {
+      await SupabaseService.deleteTransfer(id);
+    }
+    console.log('Transferencia eliminada:', id);
+  } catch (error) {
+    console.error('Error eliminando transferencia:', error);
+  }
+};
+
   // ✅ Solo marcar como loading cuando realmente esté bloqueando la UI
   const isLoadingCombined = authLoading || (isLoading && !hasInitialData);
 
@@ -1566,7 +1636,11 @@ export function DataProvider({ children }: DataProviderProps) {
     retryConnection,
     // ✅ Nuevas funciones
     loadCriticalData,
-    loadSecondaryData
+    loadSecondaryData,
+    transfers,
+    addTransfer,
+    updateTransfer,
+    deleteTransfer,
   };
 
   return (

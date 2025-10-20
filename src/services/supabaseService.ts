@@ -3,7 +3,7 @@ import {
   Product, Sale, Customer, Expense, Purchase, PurchasePayment,
   User, Supplier, CashRegister,
   ReceiptTemplate, Layaway, LayawayPayment, LayawayItem, PaymentMethod, Store,
-  Quote
+  Quote, Transfer
 } from '../types';
 
   export class SupabaseService {
@@ -430,6 +430,64 @@ import {
         .eq('id', id);
       if (deletePurchaseError) throw new Error(`Error deleting purchase: ${deletePurchaseError.message}`);
     }
+
+    // 🟢 TRANSFERS (NUEVO)
+static async getAllTransfers(): Promise<Transfer[]> {
+  try {
+    const exists = await this.tableExists('transfers');
+    if (!exists) {
+      console.warn('Transfers table does not exist');
+      return [];
+    }
+
+    const { data, error } = await supabase
+      .from('transfers')
+      .select('*')
+      .order('createdAt', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching transfers:', error);
+      return [];
+    }
+
+    return (data || []).map((t: any) => ({
+      ...t,
+      createdAt: new Date(t.createdAt),
+      completedAt: t.completedAt ? new Date(t.completedAt) : undefined
+    }));
+  } catch (error) {
+    console.error('Error in getAllTransfers:', error);
+    return [];
+  }
+}
+
+static async saveTransfer(transfer: Transfer): Promise<void> {
+  try {
+    const { error } = await supabase.from('transfers').upsert({
+      id: transfer.id,
+      fromStoreId: transfer.fromStoreId,
+      toStoreId: transfer.toStoreId,
+      items: transfer.items,
+      status: transfer.status,
+      createdAt: transfer.createdAt.toISOString(),
+      completedAt: transfer.completedAt ? transfer.completedAt.toISOString() : null,
+      employeeId: transfer.employeeId,
+      notes: transfer.notes
+    });
+    if (error) throw new Error(`Error saving transfer: ${error.message}`);
+  } catch (error) {
+    console.error('Error in saveTransfer:', error);
+  }
+}
+
+static async deleteTransfer(id: string): Promise<void> {
+  try {
+    const { error } = await supabase.from('transfers').delete().eq('id', id);
+    if (error) throw new Error(`Error deleting transfer: ${error.message}`);
+  } catch (error) {
+    console.error('Error in deleteTransfer:', error);
+  }
+}
 
     static async updateProductStock(productId: string, newStock: number): Promise<void> {
       const table = await this.resolveProductsTable();

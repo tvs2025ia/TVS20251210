@@ -220,3 +220,26 @@ export interface Layaway {
   dueDate?: Date;
   notes?: string;
 }
+
+// --- Transfers ---
+export interface TransferItem {
+  productId: string;
+  productName: string;
+  productSku: string;
+  quantity: number;
+}
+
+export type TransferStatus = 'pending' | 'in-transit' | 'completed' | 'cancelled';
+
+export interface Transfer {
+  id: string;
+  fromStoreId: string;
+  toStoreId: string;
+  items: TransferItem[];
+  status: TransferStatus;
+  createdAt: Date;
+  completedAt?: Date;
+  employeeId: string;
+  notes?: string;
+}
+
