@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { 
   ArrowRightLeft, 
   Plus, 
-  Store, 
   Eye,
   X,
   Minus,
@@ -16,25 +15,16 @@ import { useAuth } from '../contexts/AuthContext';
 import { Transfer } from '../types';
 
 export default function Transfers() {
-  const { products, transfers, addTransfer, updateTransfer } = useData();
-  const { currentStore, stores } = useStore(); // ✅ Agregar stores desde useStore
+  const { products, transfers, addTransfer, updateProduct } = useData(); // ✅ Cambiar a updateProduct
+  const { currentStore, stores } = useStore();
   const { user } = useAuth();
 
-  const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string>('all');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [viewingTransfer, setViewingTransfer] = useState<Transfer | null>(null);
 
   const storeTransfers = transfers.filter(
     t => t.fromStoreId === currentStore?.id || t.toStoreId === currentStore?.id
   );
-
-  const formatCurrency = (amount: number) =>
-    new Intl.NumberFormat('es-CO', {
-      style: 'currency',
-      currency: 'COP',
-      minimumFractionDigits: 0
-    }).format(amount);
 
   const formatDate = (date: Date) =>
     new Date(date).toLocaleDateString('es-CO', {
@@ -76,18 +66,6 @@ export default function Transfers() {
       </span>
     );
   };
-
-  const filteredTransfers = storeTransfers.filter(t => {
-    const matchesSearch =
-      t.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      t.items.some(item =>
-        item.productName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.productSku.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-
-    const matchesStatus = statusFilter === 'all' || t.status === statusFilter;
-    return matchesSearch && matchesStatus;
-  });
 
   // --- Create Transfer Modal ---
   const CreateTransferModal = ({ onClose }: { onClose: () => void }) => {
@@ -179,7 +157,7 @@ export default function Transfers() {
 
       await addTransfer(newTransfer);
 
-      // Ajustar inventario
+      // ✅ CORREGIDO: Usar updateProduct para actualizar el stock de productos
       for (const item of items) {
         const originProduct = products.find(
           p => p.id === item.productId && p.storeId === fromStoreId
@@ -189,21 +167,21 @@ export default function Transfers() {
         );
 
         if (originProduct) {
-          // ✅ Corregido: Actualizar producto, no transferencia
-          const updatedProduct = {
+          // Actualizar stock del producto origen
+          const updatedOriginProduct = {
             ...originProduct,
             stock: originProduct.stock - item.quantity
           };
-          await updateTransfer(updatedProduct);
+          await updateProduct(updatedOriginProduct);
         }
 
         if (destProduct) {
-          // ✅ Corregido: Actualizar producto, no transferencia
-          const updatedProduct = {
+          // Actualizar stock del producto destino
+          const updatedDestProduct = {
             ...destProduct,
             stock: destProduct.stock + item.quantity
           };
-          await updateTransfer(updatedProduct);
+          await updateProduct(updatedDestProduct);
         }
       }
 
@@ -490,14 +468,6 @@ export default function Transfers() {
     );
   };
 
-  // --- Stats ---
-  const stats = {
-    total: storeTransfers.length,
-    pending: storeTransfers.filter(t => t.status === 'pending').length,
-    inTransit: storeTransfers.filter(t => t.status === 'in-transit').length,
-    completed: storeTransfers.filter(t => t.status === 'completed').length
-  };
-
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -536,7 +506,7 @@ export default function Transfers() {
                 </tr>
               </thead>
               <tbody>
-                {filteredTransfers.map(t => { // ✅ Usar filteredTransfers en lugar de storeTransfers
+                {storeTransfers.map(t => {
                   const fromStore = stores.find((s: any) => s.id === t.fromStoreId);
                   const toStore = stores.find((s: any) => s.id === t.toStoreId);
                   return (
