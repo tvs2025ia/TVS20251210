@@ -25,7 +25,8 @@ import {
   CloudOff,
   ChevronLeft,
   ChevronRight,
-  RefreshCw
+  RefreshCw,
+  ArrowRightLeft
 } from 'lucide-react';
 
 interface LayoutProps {
@@ -98,6 +99,7 @@ export function Layout({ children, currentPage, onPageChange }: LayoutProps) {
     { name: 'Clientes', id: 'customers', icon: Users, admin: false },
     { name: 'Cotizaciones', id: 'quotes', icon: FileText, admin: false },
     { name: 'Compras', id: 'purchases', icon: ShoppingBag, admin: false },
+    { name: 'Transferencias', id: 'transfers', icon: ArrowRightLeft, admin: true },
     { name: 'Ingresos', id: 'incomes', icon: TrendingUp, admin: true },
     { name: 'Egresos', id: 'expenses', icon: DollarSign, admin: false },
     { name: 'Cuadre de Caja', id: 'cash-register', icon: Calculator, admin: false },
