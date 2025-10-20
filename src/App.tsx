@@ -14,6 +14,7 @@ import { Inventory } from './components/Inventory';
 import { Customers } from './components/Customers';
 import { Quotes } from './components/Quotes';
 import { Purchases } from './components/Purchases';
+import Transfers from './components/Transfers';
 import { Incomes } from './components/Incomes';
 import { Expenses } from './components/Expenses';
 import { CashRegister } from './components/CashRegister';
@@ -227,8 +228,10 @@ function AppContent() {
           return <Quotes />;
         case 'purchases':
           return <Purchases />;
-        case 'incomes':
+        case 'incomes': 
           return <Incomes />;  
+        case 'transfers':
+          return <Transfers />;
         case 'expenses':
           return <Expenses />;
         case 'cash-register':
