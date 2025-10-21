@@ -1334,7 +1334,7 @@ static async deleteTransfer(id: string): Promise<void> {
     static async getExistingSkus(skus: string[]): Promise<Set<string>> {
       const table = await this.resolveProductsTable();
       if (table === 'products') {
-        const { data, error } = await supabase.from('products').select('sku').in('sku', skus);
+        const { data, error } = await supabase.from('products').select('sku').in('sku', skus).eq('store_id', storeId);
         if (error) throw new Error(error.message);
         return new Set((data || []).map((d: any) => d.sku));
       }
