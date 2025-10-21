@@ -441,20 +441,26 @@ static async getAllTransfers(): Promise<Transfer[]> {
     }
 
     const { data, error } = await supabase
-      .from('transfers')
-      .select('*')
-      .order('createdAt', { ascending: false });
+    .from('transfers')
+    .select('*')
+    .order('created_at', { ascending: false }); // ✅ Cambio aquí
 
-    if (error) {
-      console.error('Error fetching transfers:', error);
-      return [];
-    }
+  if (error) {
+    console.error('Error fetching transfers:', error);
+    return [];
+  }
 
-    return (data || []).map((t: any) => ({
-      ...t,
-      createdAt: new Date(t.createdAt),
-      completedAt: t.completedAt ? new Date(t.completedAt) : undefined
-    }));
+  return (data || []).map((t: any) => ({
+    id: t.id,
+    fromStoreId: t.from_store_id || t.fromStoreId, // ✅ Cambio aquí
+    toStoreId: t.to_store_id || t.toStoreId, // ✅ Cambio aquí
+    items: t.items,
+    status: t.status,
+    createdAt: new Date(t.created_at || t.createdAt), // ✅ Cambio aquí
+    completedAt: t.completed_at || t.completedAt ? new Date(t.completed_at || t.completedAt) : undefined, // ✅ Cambio aquí
+    employeeId: t.employee_id || t.employeeId, // ✅ Cambio aquí
+    notes: t.notes
+  }));
   } catch (error) {
     console.error('Error in getAllTransfers:', error);
     return [];
@@ -465,18 +471,19 @@ static async saveTransfer(transfer: Transfer): Promise<void> {
   try {
     const { error } = await supabase.from('transfers').upsert({
       id: transfer.id,
-      fromStoreId: transfer.fromStoreId,
-      toStoreId: transfer.toStoreId,
+      from_store_id: transfer.fromStoreId, // ✅ Cambio aquí
+      to_store_id: transfer.toStoreId, // ✅ Cambio aquí
       items: transfer.items,
       status: transfer.status,
-      createdAt: transfer.createdAt.toISOString(),
-      completedAt: transfer.completedAt ? transfer.completedAt.toISOString() : null,
-      employeeId: transfer.employeeId,
+      created_at: transfer.createdAt.toISOString(), // ✅ Cambio aquí
+      completed_at: transfer.completedAt ? transfer.completedAt.toISOString() : null, // ✅ Cambio aquí
+      employee_id: transfer.employeeId, // ✅ Cambio aquí
       notes: transfer.notes
     });
     if (error) throw new Error(`Error saving transfer: ${error.message}`);
   } catch (error) {
     console.error('Error in saveTransfer:', error);
+    throw error; // ✅ Cambio aquí (agregamos throw)
   }
 }
 

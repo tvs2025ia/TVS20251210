@@ -411,20 +411,34 @@ export function DataProvider({ children }: DataProviderProps) {
         console.warn('Error cargando ventas:', error);
       }
 
-      // Cargar compras
-      setLoadingProgress(prev => ({ ...prev, secondary: 40 }));
-      try {
-        const purchasesResult = await SupabaseService.getAllPurchases(user.storeId);
-        if (purchasesResult) {
-          setPurchases(purchasesResult);
-          console.log(`Compras cargadas: ${purchasesResult.length}`);
-        }
-      } catch (error) {
-        console.warn('Error cargando compras:', error);
-      }
+// Cargar compras
+setLoadingProgress(prev => ({ ...prev, secondary: 40 }));
+try {
+  const purchasesResult = await SupabaseService.getAllPurchases(user.storeId);
+  if (purchasesResult) {
+    setPurchases(purchasesResult);
+    console.log(`Compras cargadas: ${purchasesResult.length}`);
+  }
+} catch (error) {
+  console.warn('Error cargando compras:', error);
+}
 
-      // Cargar gastos
-      setLoadingProgress(prev => ({ ...prev, secondary: 50 }));
+// ✅✅✅ AGREGAR ESTO (NUEVO) ✅✅✅
+// Cargar transferencias
+setLoadingProgress(prev => ({ ...prev, secondary: 45 }));
+try {
+  const transfersResult = await SupabaseService.getAllTransfers();
+  if (transfersResult) {
+    setTransfers(transfersResult);
+    console.log(`Transferencias cargadas: ${transfersResult.length}`);
+  }
+} catch (error) {
+  console.warn('Error cargando transferencias:', error);
+}
+// ✅✅✅ FIN DEL CÓDIGO NUEVO ✅✅✅
+
+// Cargar gastos
+setLoadingProgress(prev => ({ ...prev, secondary: 50 }));
       try {
         const expensesResult = await SupabaseService.getAllExpenses(user.storeId);
         if (expensesResult) {

@@ -15,7 +15,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { Transfer } from '../types';
 
 export default function Transfers() {
-  const { products, transfers, addTransfer, updateProduct } = useData(); // ✅ Cambiar a updateProduct
+  const { products, transfers, addTransfer, updateProduct, updateTransfer } = useData();
   const { currentStore, stores } = useStore();
   const { user } = useAuth();
 
