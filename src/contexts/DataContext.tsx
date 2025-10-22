@@ -609,32 +609,41 @@ setLoadingProgress(prev => ({ ...prev, secondary: 50 }));
       id: isValidUUID(product.id) ? product.id : crypto.randomUUID(),
       storeId: isValidUUID(product.storeId) ? product.storeId : (user?.storeId || DEFAULT_STORE_ID)
     };
-
+  
     try {
-      // Optimistic update
-      setProducts(prev => {
-        const updated = [...prev, normalized];
-        saveToCache('cached_products', updated);
-        return updated;
-      });
-
+      // 🟢 1. INTENTAR PRIMERO EN SUPABASE SI HAY CONEXIÓN
       if (isConnected) {
         try {
           const savedProduct = await SupabaseService.saveProduct(normalized);
+          
+          // Actualizar estado local con datos de Supabase
           setProducts(prev => {
             const updated = prev.map(p => p.id === normalized.id ? savedProduct : p);
             saveToCache('cached_products', updated);
             return updated;
           });
-          console.log('Producto guardado en Supabase:', normalized.name);
-        } catch (error) {
-          console.warn('Error guardando en Supabase, manteniendo local:', error);
+          
+          console.log('✅ Producto guardado en Supabase:', normalized.name);
+          return; // Salir si éxito en Supabase
+        } catch (supabaseError) {
+          console.warn('Error guardando en Supabase, intentando offline:', supabaseError);
+          // Continuar al fallback offline
         }
-      } else {
-        console.log('Producto guardado offline:', normalized.name);
       }
+  
+      // 🟢 2. SOLO SI NO HAY CONEXIÓN O FALLA SUPABASE, guardar en local
+      setProducts(prev => {
+        const updated = [...prev, normalized];
+        saveToCache('cached_products', updated);
+        return updated;
+      });
+  
+      // Guardar en cola de sincronización para cuando vuelva la conexión
+      await OfflineService.addToSyncQueue('product', normalized);
+      console.log('📱 Producto guardado offline:', normalized.name);
       
     } catch (error) {
+      // Revertir cambios locales en caso de error
       setProducts(prev => {
         const updated = prev.filter(p => p.id !== normalized.id);
         saveToCache('cached_products', updated);
@@ -693,12 +702,60 @@ setLoadingProgress(prev => ({ ...prev, secondary: 50 }));
     };
     
     try {
+      // 🟢 1. INTENTAR PRIMERO EN SUPABASE SI HAY CONEXIÓN
+      if (isConnected) {
+        try {
+          await SupabaseService.saveSale(normalized);
+          
+          // Actualizar estado local
+          setSales(prev => {
+            const updated = [...prev, normalized];
+            saveToCache('cached_sales', updated);
+            return updated;
+          });
+  
+          // Actualizar stock de productos
+          setProducts(prev => {
+            const updated = prev.map(p => {
+              const saleItem = normalized.items.find(item => item.productId === p.id);
+              if (saleItem) {
+                return { ...p, stock: p.stock - saleItem.quantity };
+              }
+              return p;
+            });
+            saveToCache('cached_products', updated);
+            return updated;
+          });
+  
+          // Agregar movimiento de caja
+          const cashMovement: CashMovement = {
+            id: crypto.randomUUID(),
+            storeId: normalized.storeId,
+            employeeId: normalized.employeeId,
+            type: 'sale',
+            amount: normalized.total,
+            description: `Venta ${normalized.invoiceNumber}`,
+            date: normalized.date,
+            referenceId: normalized.id
+          };
+          setCashMovements(prev => [...prev, cashMovement]);
+  
+          console.log('✅ Venta guardada en Supabase:', normalized.invoiceNumber);
+          return; // Salir si éxito en Supabase
+        } catch (supabaseError) {
+          console.warn('Error guardando en Supabase, intentando offline:', supabaseError);
+          // Continuar al fallback offline
+        }
+      }
+  
+      // 🟢 2. SOLO SI NO HAY CONEXIÓN O FALLA SUPABASE, guardar en local
       setSales(prev => {
         const updated = [...prev, normalized];
         saveToCache('cached_sales', updated);
         return updated;
       });
-
+  
+      // Actualizar stock localmente
       setProducts(prev => {
         const updated = prev.map(p => {
           const saleItem = normalized.items.find(item => item.productId === p.id);
@@ -710,7 +767,8 @@ setLoadingProgress(prev => ({ ...prev, secondary: 50 }));
         saveToCache('cached_products', updated);
         return updated;
       });
-
+  
+      // Agregar movimiento de caja local
       const cashMovement: CashMovement = {
         id: crypto.randomUUID(),
         storeId: normalized.storeId,
@@ -722,20 +780,13 @@ setLoadingProgress(prev => ({ ...prev, secondary: 50 }));
         referenceId: normalized.id
       };
       setCashMovements(prev => [...prev, cashMovement]);
-
-      if (isConnected) {
-        try {
-          await SupabaseService.saveSale(normalized);
-          console.log('Venta guardada en Supabase:', normalized.invoiceNumber);
-        } catch (error) {
-          console.warn('Error guardando en Supabase, guardando offline:', error);
-          await OfflineService.saveSaleOffline(normalized);
-        }
-      } else {
-        await OfflineService.saveSaleOffline(normalized);
-        console.log('Venta guardada offline:', normalized.invoiceNumber);
-      }
+  
+      // Guardar en cola de sincronización
+      await OfflineService.saveSaleOffline(normalized);
+      console.log('📱 Venta guardada offline:', normalized.invoiceNumber);
+      
     } catch (error) {
+      // Revertir cambios locales en caso de error
       setSales(prev => {
         const updated = prev.filter(s => s.id !== normalized.id);
         saveToCache('cached_sales', updated);
@@ -887,6 +938,36 @@ setLoadingProgress(prev => ({ ...prev, secondary: 50 }));
     };
     
     try {
+      // 🟢 1. INTENTAR PRIMERO EN SUPABASE SI HAY CONEXIÓN
+      if (isConnected) {
+        try {
+          await SupabaseService.saveExpense(normalizedExpense);
+          
+          // Actualizar estado local
+          setExpenses(prev => [...prev, normalizedExpense]);
+          
+          // Agregar movimiento de caja
+          const cashMovement: CashMovement = {
+            id: crypto.randomUUID(),
+            storeId: normalizedExpense.storeId,
+            employeeId: normalizedExpense.employeeId,
+            type: 'expense',
+            amount: -normalizedExpense.amount,
+            description: normalizedExpense.description,
+            date: normalizedExpense.date,
+            referenceId: normalizedExpense.id
+          };
+          setCashMovements(prev => [...prev, cashMovement]);
+          
+          console.log('✅ Gasto guardado en Supabase:', expense.description);
+          return; // Salir si éxito en Supabase
+        } catch (supabaseError) {
+          console.warn('Error guardando en Supabase, intentando offline:', supabaseError);
+          // Continuar al fallback offline
+        }
+      }
+  
+      // 🟢 2. SOLO SI NO HAY CONEXIÓN O FALLA SUPABASE, guardar en local
       setExpenses(prev => [...prev, normalizedExpense]);
       
       const cashMovement: CashMovement = {
@@ -901,20 +982,12 @@ setLoadingProgress(prev => ({ ...prev, secondary: 50 }));
       };
       setCashMovements(prev => [...prev, cashMovement]);
       
-      if (isConnected) {
-        try {
-          await SupabaseService.saveExpense(normalizedExpense);
-          console.log('Gasto guardado en Supabase:', expense.description);
-        } catch (error) {
-          console.warn('Error guardando en Supabase, guardando offline:', error);
-          await OfflineService.saveExpenseOffline(normalizedExpense);
-        }
-      } else {
-        await OfflineService.saveExpenseOffline(normalizedExpense);
-        console.log('Gasto guardado offline:', expense.description);
-      }
+      // Guardar en cola de sincronización
+      await OfflineService.saveExpenseOffline(normalizedExpense);
+      console.log('📱 Gasto guardado offline:', expense.description);
       
     } catch (error) {
+      // Revertir cambios locales en caso de error
       setExpenses(prev => prev.filter(e => e.id !== normalizedExpense.id));
       setCashMovements(prev => prev.filter(m => m.referenceId !== normalizedExpense.id));
       console.error('Error guardando gasto:', error);
