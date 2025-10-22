@@ -496,22 +496,39 @@ static async deleteTransfer(id: string): Promise<void> {
   }
 }
 
-    static async updateProductStock(productId: string, newStock: number): Promise<void> {
-      const table = await this.resolveProductsTable();
-      if (table === 'products') {
-        const { error } = await supabase
-          .from('products')
-          .update({ stock: newStock })
-          .eq('id', productId);
-        if (error) throw new Error(`Error updating product stock: ${error.message}`);
-        return;
+static async updateProductStock(productId: string, newStock: number): Promise<void> {
+  try {
+    const table = await this.resolveProductsTable();
+    
+    if (table === 'products') {
+      const { error } = await supabase
+        .from('products')
+        .update({ stock: newStock })
+        .eq('id', productId);
+      
+      if (error) {
+        console.error('Error updating product stock:', error);
+        throw new Error(`Error updating product stock: ${error.message}`);
       }
+    } else {
+      // Para prestashop_products
       const { error } = await supabase
         .from('prestashop_products')
         .update({ stock_quantity: newStock })
         .eq('id', productId);
-      if (error) throw new Error(`Error updating product stock: ${error.message}`);
+      
+      if (error) {
+        console.error('Error updating prestashop product stock:', error);
+        throw new Error(`Error updating product stock: ${error.message}`);
+      }
     }
+    
+    console.log(`✅ Stock actualizado para producto ${productId}: ${newStock}`);
+  } catch (error) {
+    console.error('Error in updateProductStock:', error);
+    throw error;
+  }
+}
 
     // Customers
     static async getAllCustomers(storeId?: string): Promise<Customer[]> {
