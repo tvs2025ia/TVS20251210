@@ -66,7 +66,11 @@ export function POS() {
   const subtotal = useMemo(() => cart.reduce((sum, item) => sum + (item.total || 0), 0), [cart]);
   const totalWithDiscount = useMemo(() => subtotal - discount, [subtotal, discount]);
   const finalTotal = useMemo(() => totalWithDiscount + shippingCost, [totalWithDiscount, shippingCost]);
-  const invoiceNumber = useMemo(() => `INV-${Date.now()}`, [] as any);
+  const invoiceNumber = useMemo(() => {
+    const timestamp = Date.now();
+    const random = Math.floor(Math.random() * 1000);
+    return `INV-${timestamp}-${random}`;
+  }, []);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('es-CO', {
