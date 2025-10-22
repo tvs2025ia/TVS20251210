@@ -164,8 +164,8 @@ export function POS() {
     }
     const sale: Sale = {
       id: (crypto && (crypto as any).randomUUID) ? (crypto as any).randomUUID() : `${Date.now()}`,
-      storeId: currentStore?.id,
-      employeeId: user?.id,
+      storeId: currentStore?.id || 'default-store-id', // Proporciona un valor por defecto
+      employeeId: user?.id || 'default-user-id', // Proporciona un valor por defecto
       items: cart,
       subtotal,
       discount,
