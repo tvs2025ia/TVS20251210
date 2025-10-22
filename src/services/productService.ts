@@ -62,10 +62,11 @@ export class ProductService {
         return { success, errors };
       }
 
-      // Get all existing SKUs in one query for performance (table-agnostic)
+      // ✅ CORRECCIÓN: Verificar SKUs existentes filtrando por storeId
       const skus = validProducts.map(p => p.sku);
       let existingSkus: Set<string>;
       try {
+        // Ahora sí pasa el storeId para que solo verifique en esta tienda
         existingSkus = await SupabaseService.getExistingSkus(skus, storeId);
       } catch (e) {
         const msg = e instanceof Error ? e.message : 'Error desconocido';
@@ -80,7 +81,7 @@ export class ProductService {
         const rowNumber = index + 2;
         
         if (existingSkus.has(productData.sku)) {
-          errors.push(`Fila ${rowNumber}: El SKU "${productData.sku}" ya existe`);
+          errors.push(`Fila ${rowNumber}: El SKU "${productData.sku}" ya existe en esta tienda`);
           return;
         }
 
@@ -113,7 +114,18 @@ export class ProductService {
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Error desconocido';
-      errors.push(`Error general del sistema: ${errorMessage}`);
+      
+      // ✅ Mejorar mensaje de error para constraint violations
+      if (errorMessage.includes('duplicate key value violates unique constraint')) {
+        if (errorMessage.includes('products_sku_store_id_key')) {
+          errors.push(`Error: Algunos SKUs ya existen en esta tienda. Verifica que no haya duplicados en tu archivo.`);
+        } else {
+          errors.push(`Error: Violación de restricción de unicidad - ${errorMessage}`);
+        }
+      } else {
+        errors.push(`Error general del sistema: ${errorMessage}`);
+      }
+      
       console.error('Error en bulk upload:', error);
     }
 
