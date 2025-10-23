@@ -609,41 +609,32 @@ setLoadingProgress(prev => ({ ...prev, secondary: 50 }));
       id: isValidUUID(product.id) ? product.id : crypto.randomUUID(),
       storeId: isValidUUID(product.storeId) ? product.storeId : (user?.storeId || DEFAULT_STORE_ID)
     };
-  
+
     try {
-      // 🟢 1. INTENTAR PRIMERO EN SUPABASE SI HAY CONEXIÓN
-      if (isConnected) {
-        try {
-          const savedProduct = await SupabaseService.saveProduct(normalized);
-          
-          // Actualizar estado local con datos de Supabase
-          setProducts(prev => {
-            const updated = prev.map(p => p.id === normalized.id ? savedProduct : p);
-            saveToCache('cached_products', updated);
-            return updated;
-          });
-          
-          console.log('✅ Producto guardado en Supabase:', normalized.name);
-          return; // Salir si éxito en Supabase
-        } catch (supabaseError) {
-          console.warn('Error guardando en Supabase, intentando offline:', supabaseError);
-          // Continuar al fallback offline
-        }
-      }
-  
-      // 🟢 2. SOLO SI NO HAY CONEXIÓN O FALLA SUPABASE, guardar en local
+      // Optimistic update
       setProducts(prev => {
         const updated = [...prev, normalized];
         saveToCache('cached_products', updated);
         return updated;
       });
-  
-      // Guardar en cola de sincronización para cuando vuelva la conexión
-      await OfflineService.addToSyncQueue('product', normalized);
-      console.log('📱 Producto guardado offline:', normalized.name);
+
+      if (isConnected) {
+        try {
+          const savedProduct = await SupabaseService.saveProduct(normalized);
+          setProducts(prev => {
+            const updated = prev.map(p => p.id === normalized.id ? savedProduct : p);
+            saveToCache('cached_products', updated);
+            return updated;
+          });
+          console.log('Producto guardado en Supabase:', normalized.name);
+        } catch (error) {
+          console.warn('Error guardando en Supabase, manteniendo local:', error);
+        }
+      } else {
+        console.log('Producto guardado offline:', normalized.name);
+      }
       
     } catch (error) {
-      // Revertir cambios locales en caso de error
       setProducts(prev => {
         const updated = prev.filter(p => p.id !== normalized.id);
         saveToCache('cached_products', updated);
@@ -702,76 +693,12 @@ setLoadingProgress(prev => ({ ...prev, secondary: 50 }));
     };
     
     try {
-      // 🟢 1. INTENTAR PRIMERO EN SUPABASE SI HAY CONEXIÓN
-      if (isConnected) {
-        try {
-          // Guardar la venta en Supabase
-          await SupabaseService.saveSale(normalized);
-          
-          // 🟢 ACTUALIZAR STOCK EN SUPABASE PARA CADA PRODUCTO
-          const stockUpdates = [];
-          for (const item of normalized.items) {
-            const product = products.find(p => p.id === item.productId);
-            if (product) {
-              const newStock = product.stock - item.quantity;
-              stockUpdates.push(
-                SupabaseService.updateProductStock(item.productId, newStock)
-              );
-            }
-          }
-          
-          // Esperar a que todas las actualizaciones de stock se completen
-          await Promise.all(stockUpdates);
-          
-          // Actualizar estado local
-          setSales(prev => {
-            const updated = [...prev, normalized];
-            saveToCache('cached_sales', updated);
-            return updated;
-          });
-  
-          // Actualizar stock localmente
-          setProducts(prev => {
-            const updated = prev.map(p => {
-              const saleItem = normalized.items.find(item => item.productId === p.id);
-              if (saleItem) {
-                return { ...p, stock: p.stock - saleItem.quantity };
-              }
-              return p;
-            });
-            saveToCache('cached_products', updated);
-            return updated;
-          });
-  
-          // Agregar movimiento de caja
-          const cashMovement: CashMovement = {
-            id: crypto.randomUUID(),
-            storeId: normalized.storeId,
-            employeeId: normalized.employeeId,
-            type: 'sale',
-            amount: normalized.total,
-            description: `Venta ${normalized.invoiceNumber}`,
-            date: normalized.date,
-            referenceId: normalized.id
-          };
-          setCashMovements(prev => [...prev, cashMovement]);
-  
-          console.log('✅ Venta guardada en Supabase y stock actualizado:', normalized.invoiceNumber);
-          return; // Salir si éxito en Supabase
-        } catch (supabaseError) {
-          console.warn('Error guardando en Supabase, intentando offline:', supabaseError);
-          // Continuar al fallback offline
-        }
-      }
-  
-      // 🟢 2. SOLO SI NO HAY CONEXIÓN O FALLA SUPABASE, guardar en local
       setSales(prev => {
         const updated = [...prev, normalized];
         saveToCache('cached_sales', updated);
         return updated;
       });
-  
-      // Actualizar stock localmente
+
       setProducts(prev => {
         const updated = prev.map(p => {
           const saleItem = normalized.items.find(item => item.productId === p.id);
@@ -783,8 +710,7 @@ setLoadingProgress(prev => ({ ...prev, secondary: 50 }));
         saveToCache('cached_products', updated);
         return updated;
       });
-  
-      // Agregar movimiento de caja local
+
       const cashMovement: CashMovement = {
         id: crypto.randomUUID(),
         storeId: normalized.storeId,
@@ -796,13 +722,20 @@ setLoadingProgress(prev => ({ ...prev, secondary: 50 }));
         referenceId: normalized.id
       };
       setCashMovements(prev => [...prev, cashMovement]);
-  
-      // Guardar en cola de sincronización
-      await OfflineService.saveSaleOffline(normalized);
-      console.log('📱 Venta guardada offline:', normalized.invoiceNumber);
-      
+
+      if (isConnected) {
+        try {
+          await SupabaseService.saveSale(normalized);
+          console.log('Venta guardada en Supabase:', normalized.invoiceNumber);
+        } catch (error) {
+          console.warn('Error guardando en Supabase, guardando offline:', error);
+          await OfflineService.saveSaleOffline(normalized);
+        }
+      } else {
+        await OfflineService.saveSaleOffline(normalized);
+        console.log('Venta guardada offline:', normalized.invoiceNumber);
+      }
     } catch (error) {
-      // Revertir cambios locales en caso de error
       setSales(prev => {
         const updated = prev.filter(s => s.id !== normalized.id);
         saveToCache('cached_sales', updated);
@@ -954,36 +887,6 @@ setLoadingProgress(prev => ({ ...prev, secondary: 50 }));
     };
     
     try {
-      // 🟢 1. INTENTAR PRIMERO EN SUPABASE SI HAY CONEXIÓN
-      if (isConnected) {
-        try {
-          await SupabaseService.saveExpense(normalizedExpense);
-          
-          // Actualizar estado local
-          setExpenses(prev => [...prev, normalizedExpense]);
-          
-          // Agregar movimiento de caja
-          const cashMovement: CashMovement = {
-            id: crypto.randomUUID(),
-            storeId: normalizedExpense.storeId,
-            employeeId: normalizedExpense.employeeId,
-            type: 'expense',
-            amount: -normalizedExpense.amount,
-            description: normalizedExpense.description,
-            date: normalizedExpense.date,
-            referenceId: normalizedExpense.id
-          };
-          setCashMovements(prev => [...prev, cashMovement]);
-          
-          console.log('✅ Gasto guardado en Supabase:', expense.description);
-          return; // Salir si éxito en Supabase
-        } catch (supabaseError) {
-          console.warn('Error guardando en Supabase, intentando offline:', supabaseError);
-          // Continuar al fallback offline
-        }
-      }
-  
-      // 🟢 2. SOLO SI NO HAY CONEXIÓN O FALLA SUPABASE, guardar en local
       setExpenses(prev => [...prev, normalizedExpense]);
       
       const cashMovement: CashMovement = {
@@ -998,12 +901,20 @@ setLoadingProgress(prev => ({ ...prev, secondary: 50 }));
       };
       setCashMovements(prev => [...prev, cashMovement]);
       
-      // Guardar en cola de sincronización
-      await OfflineService.saveExpenseOffline(normalizedExpense);
-      console.log('📱 Gasto guardado offline:', expense.description);
+      if (isConnected) {
+        try {
+          await SupabaseService.saveExpense(normalizedExpense);
+          console.log('Gasto guardado en Supabase:', expense.description);
+        } catch (error) {
+          console.warn('Error guardando en Supabase, guardando offline:', error);
+          await OfflineService.saveExpenseOffline(normalizedExpense);
+        }
+      } else {
+        await OfflineService.saveExpenseOffline(normalizedExpense);
+        console.log('Gasto guardado offline:', expense.description);
+      }
       
     } catch (error) {
-      // Revertir cambios locales en caso de error
       setExpenses(prev => prev.filter(e => e.id !== normalizedExpense.id));
       setCashMovements(prev => prev.filter(m => m.referenceId !== normalizedExpense.id));
       console.error('Error guardando gasto:', error);
@@ -1405,32 +1316,12 @@ setLoadingProgress(prev => ({ ...prev, secondary: 50 }));
     
     try {
       if (isConnected) {
-        try {
-          const savedLayaway = await SupabaseService.saveLayaway(normalizedLayaway);
-          setLayaways(prev => [...prev, savedLayaway]);
-          
-          // 🟢 ACTUALIZAR STOCK EN SUPABASE PARA CADA PRODUCTO
-          const stockUpdates = [];
-          for (const item of normalizedLayaway.items) {
-            const product = products.find(p => p.id === item.productId);
-            if (product) {
-              const newStock = product.stock - item.quantity;
-              stockUpdates.push(
-                SupabaseService.updateProductStock(item.productId, newStock)
-              );
-            }
-          }
-          await Promise.all(stockUpdates);
-          
-        } catch (error) {
-          console.warn('Error guardando separado en Supabase:', error);
-          throw error;
-        }
+        const savedLayaway = await SupabaseService.saveLayaway(normalizedLayaway);
+        setLayaways(prev => [...prev, savedLayaway]);
       } else {
         setLayaways(prev => [...prev, normalizedLayaway]);
       }
       
-      // Actualizar stock localmente
       normalizedLayaway.items.forEach(item => {
         setProducts(prev => {
           const updated = prev.map(p => 
@@ -1443,36 +1334,28 @@ setLoadingProgress(prev => ({ ...prev, secondary: 50 }));
         });
       });
       
-      console.log('✅ Separado guardado y stock actualizado');
+      console.log('Separado guardado');
     } catch (error) {
       console.error('Error guardando separado:', error);
       throw error;
     }
   };
-  
+
   const updateLayaway = async (updatedLayaway: Layaway) => {
     try {
       if (isConnected) {
-        try {
-          const savedLayaway = await SupabaseService.saveLayaway(updatedLayaway);
-          setLayaways(prev => prev.map(l => l.id === savedLayaway.id ? savedLayaway : l));
-          
-          console.log('✅ Separado actualizado en Supabase:', updatedLayaway.id);
-        } catch (error) {
-          console.warn('Error actualizando separado en Supabase:', error);
-          throw error;
-        }
+        const savedLayaway = await SupabaseService.saveLayaway(updatedLayaway);
+        setLayaways(prev => prev.map(l => l.id === savedLayaway.id ? savedLayaway : l));
       } else {
         setLayaways(prev => prev.map(l => l.id === updatedLayaway.id ? updatedLayaway : l));
-        console.log('📱 Separado actualizado offline:', updatedLayaway.id);
       }
+      console.log('Separado actualizado');
     } catch (error) {
       console.error('Error actualizando separado:', error);
       throw error;
     }
   };
-  
-  // 🟢 SOLO UNA FUNCIÓN addLayawayPayment - ELIMINAR LA DUPLICADA
+
   const addLayawayPayment = async (layawayId: string, payment: LayawayPayment) => {
     // Optimistic update
     setLayaways(prev => prev.map(layaway => {
@@ -1490,7 +1373,7 @@ setLoadingProgress(prev => ({ ...prev, secondary: 50 }));
       }
       return layaway;
     }));
-  
+
     // Persist in Supabase when connected, then reconcile
     if (isConnected) {
       try {
@@ -1504,7 +1387,7 @@ setLoadingProgress(prev => ({ ...prev, secondary: 50 }));
         console.error('Error guardando abono en Supabase:', error);
       }
     }
-  
+
     const layaway = layaways.find(l => l.id === layawayId);
     if (layaway) {
       const cashMovement: CashMovement = {
@@ -1520,7 +1403,7 @@ setLoadingProgress(prev => ({ ...prev, secondary: 50 }));
       setCashMovements(prev => [...prev, cashMovement]);
     }
   };
-  
+
   const addPaymentMethod = async (paymentMethod: PaymentMethod) => {
     try {
       setPaymentMethods(prev => [...prev, paymentMethod]);
@@ -1536,7 +1419,7 @@ setLoadingProgress(prev => ({ ...prev, secondary: 50 }));
       throw error;
     }
   };
-  
+
   const updatePaymentMethod = async (updatedPaymentMethod: PaymentMethod) => {
     try {
       setPaymentMethods(prev => prev.map(pm =>
@@ -1553,7 +1436,7 @@ setLoadingProgress(prev => ({ ...prev, secondary: 50 }));
       throw error;
     }
   };
-  
+
   const deletePaymentMethod = async (id: string) => {
     try {
       setPaymentMethods(prev => prev.map(pm => 
@@ -1569,17 +1452,17 @@ setLoadingProgress(prev => ({ ...prev, secondary: 50 }));
       throw error;
     }
   };
-  
+
   const addExpenseCategory = (category: string) => {
     if (!expenseCategories.includes(category)) {
       setExpenseCategories(prev => [...prev, category].sort());
     }
   };
-  
+
   const deleteExpenseCategory = (category: string) => {
     setExpenseCategories(prev => prev.filter(c => c !== category));
   };
-  
+
   const addReceiptTemplate = async (template: ReceiptTemplate) => {
     try {
       const normalizedTemplate = {
@@ -1599,7 +1482,7 @@ setLoadingProgress(prev => ({ ...prev, secondary: 50 }));
       throw error;
     }
   };
-  
+
   const updateReceiptTemplate = async (updatedTemplate: ReceiptTemplate) => {
     try {
       setReceiptTemplates(prev => prev.map(rt =>
@@ -1616,7 +1499,7 @@ setLoadingProgress(prev => ({ ...prev, secondary: 50 }));
       throw error;
     }
   };
-  
+
   const deleteReceiptTemplate = async (id: string) => {
     try {
       setReceiptTemplates(prev => prev.map(rt => 
@@ -1632,78 +1515,78 @@ setLoadingProgress(prev => ({ ...prev, secondary: 50 }));
       throw error;
     }
   };
-  
+
   const getActiveReceiptTemplate = (storeId: string): ReceiptTemplate | null => {
     return receiptTemplates.find(rt => rt.storeId === storeId && rt.isActive) || null;
   };
-  
+
   // 🟢 NUEVO PARA TRANSFERENCIAS
-  const addTransfer = async (transfer: Transfer) => {
-    try {
-      setTransfers(prev => [transfer, ...prev]);
-  
-      // Ajustar stock origen/destino
-      const stockUpdates: Record<string, number> = {};
-  
-      transfer.items.forEach(item => {
-        const origin = products.find(p => p.id === item.productId && p.storeId === transfer.fromStoreId);
-        const dest = products.find(p => p.sku === item.productSku && p.storeId === transfer.toStoreId);
-  
-        if (origin) {
-          origin.stock = Math.max(0, origin.stock - item.quantity);
-          stockUpdates[origin.id] = origin.stock;
-        }
-  
-        if (dest) {
-          dest.stock += item.quantity;
-          stockUpdates[dest.id] = dest.stock;
-        }
-      });
-  
-      setProducts(prev =>
-        prev.map(p => stockUpdates[p.id] !== undefined ? { ...p, stock: stockUpdates[p.id] } : p)
-      );
-  
-      if (isConnected) {
-        await SupabaseService.saveTransfer(transfer);
-        for (const [productId, stock] of Object.entries(stockUpdates)) {
-          await SupabaseService.updateProductStock(productId, stock);
-        }
+const addTransfer = async (transfer: Transfer) => {
+  try {
+    setTransfers(prev => [transfer, ...prev]);
+
+    // Ajustar stock origen/destino
+    const stockUpdates: Record<string, number> = {};
+
+    transfer.items.forEach(item => {
+      const origin = products.find(p => p.id === item.productId && p.storeId === transfer.fromStoreId);
+      const dest = products.find(p => p.sku === item.productSku && p.storeId === transfer.toStoreId);
+
+      if (origin) {
+        origin.stock = Math.max(0, origin.stock - item.quantity);
+        stockUpdates[origin.id] = origin.stock;
       }
-  
-      console.log('Transferencia guardada:', transfer.id);
-    } catch (error) {
-      console.error('Error guardando transferencia:', error);
-    }
-  };
-  
-  const updateTransfer = async (updated: Transfer) => {
-    try {
-      setTransfers(prev => prev.map(t => t.id === updated.id ? updated : t));
-      if (isConnected) {
-        await SupabaseService.saveTransfer(updated);
+
+      if (dest) {
+        dest.stock += item.quantity;
+        stockUpdates[dest.id] = dest.stock;
       }
-      console.log('Transferencia actualizada:', updated.id);
-    } catch (error) {
-      console.error('Error actualizando transferencia:', error);
-    }
-  };
-  
-  const deleteTransfer = async (id: string) => {
-    try {
-      setTransfers(prev => prev.filter(t => t.id !== id));
-      if (isConnected) {
-        await SupabaseService.deleteTransfer(id);
+    });
+
+    setProducts(prev =>
+      prev.map(p => stockUpdates[p.id] !== undefined ? { ...p, stock: stockUpdates[p.id] } : p)
+    );
+
+    if (isConnected) {
+      await SupabaseService.saveTransfer(transfer);
+      for (const [productId, stock] of Object.entries(stockUpdates)) {
+        await SupabaseService.updateProductStock(productId, stock);
       }
-      console.log('Transferencia eliminada:', id);
-    } catch (error) {
-      console.error('Error eliminando transferencia:', error);
     }
-  };
-  
+
+    console.log('Transferencia guardada:', transfer.id);
+  } catch (error) {
+    console.error('Error guardando transferencia:', error);
+  }
+};
+
+const updateTransfer = async (updated: Transfer) => {
+  try {
+    setTransfers(prev => prev.map(t => t.id === updated.id ? updated : t));
+    if (isConnected) {
+      await SupabaseService.saveTransfer(updated);
+    }
+    console.log('Transferencia actualizada:', updated.id);
+  } catch (error) {
+    console.error('Error actualizando transferencia:', error);
+  }
+};
+
+const deleteTransfer = async (id: string) => {
+  try {
+    setTransfers(prev => prev.filter(t => t.id !== id));
+    if (isConnected) {
+      await SupabaseService.deleteTransfer(id);
+    }
+    console.log('Transferencia eliminada:', id);
+  } catch (error) {
+    console.error('Error eliminando transferencia:', error);
+  }
+};
+
   // ✅ Solo marcar como loading cuando realmente esté bloqueando la UI
   const isLoadingCombined = authLoading || (isLoading && !hasInitialData);
-  
+
   const value = {
     products,
     sales,
