@@ -431,7 +431,7 @@ export function DataProvider({ children }: DataProviderProps) {
       console.log('✅ Producto guardado en Supabase:', savedProduct.name);
       
       // Guardar en IndexedDB como respaldo
-      await OfflineService.saveProductOffline(savedProduct);
+      await OfflineService.saveProductsOffline([savedProduct]);
     } catch (error) {
       console.error('❌ Error guardando producto:', error);
       throw error;
@@ -452,7 +452,7 @@ export function DataProvider({ children }: DataProviderProps) {
       console.log('✅ Producto actualizado en Supabase:', savedProduct.name);
       
       // Actualizar en IndexedDB
-      await OfflineService.saveProductOffline(savedProduct);
+      await OfflineService.saveProductsOffline([savedProduct]);
     } catch (error) {
       console.error('❌ Error actualizando producto:', error);
       throw error;
