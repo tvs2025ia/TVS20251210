@@ -2,7 +2,6 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { Product, Sale, Customer, Expense, Quote, Purchase, PaymentMethod, User, Supplier, CashRegister, CashMovement, ReceiptTemplate, Layaway, LayawayPayment, Transfer } from '../types';
 import { SupabaseService } from '../services/supabaseService';
 import { OfflineService } from '../services/offlineService';
-import { SyncService } from '../services/syncService';
 import { useAuth } from './AuthContext';
 
 interface DataContextType {
@@ -24,7 +23,6 @@ interface DataContextType {
   isLoading: boolean;
   isConnected: boolean;
   connectionError: string | null;
-  // ✅ Nuevos estados para carga progresiva
   hasInitialData: boolean;
   loadingProgress: {
     critical: number;
@@ -70,7 +68,6 @@ interface DataContextType {
   refreshData: () => Promise<void>;
   connectToDatabase: () => Promise<void>;
   retryConnection: () => Promise<void>;
-  // ✅ Nuevas funciones para carga progresiva
   loadCriticalData: () => Promise<void>;
   loadSecondaryData: () => Promise<void>;
   addTransfer: (transfer: Transfer) => Promise<void>;
@@ -96,101 +93,6 @@ export function useData() {
   return context;
 }
 
-// Mock data for fallback
-const mockProducts: Product[] = [
-  {
-    id: '00000000-0000-0000-0000-000000000001',
-    name: 'Laptop HP Pavilion',
-    sku: 'LP001',
-    category: 'Computadores',
-    price: 2500000,
-    cost: 2000000,
-    stock: 5,
-    minStock: 2,
-    storeId: DEFAULT_STORE_ID,
-    imageUrl: 'https://images.pexels.com/photos/205421/pexels-photo-205421.jpeg?auto=compress&cs=tinysrgb&w=400'
-  }
-];
-
-const mockPaymentMethods: PaymentMethod[] = [
-  { id: '1', name: 'Efectivo', discountPercentage: 0, isActive: true },
-  { id: '2', name: 'Tarjeta Débito', discountPercentage: 2.5, isActive: true },
-  { id: '3', name: 'Tarjeta Crédito', discountPercentage: 3.8, isActive: true },
-  { id: '4', name: 'Transferencia', discountPercentage: 1.2, isActive: true },
-  { id: '5', name: 'PayPal', discountPercentage: 4.2, isActive: true },
-  { id: '6', name: 'Nequi', discountPercentage: 1.8, isActive: true }
-];
-
-const mockExpenseCategories: string[] = [
-  'Servicios',
-  'Mantenimiento',
-  'Suministros',
-  'Marketing',
-  'Transporte',
-  'Seguridad',
-  'Limpieza',
-  'Otros'
-];
-
-const mockReceiptTemplates: ReceiptTemplate[] = [
-  {
-    id: '1',
-    name: 'Plantilla Principal',
-    storeId: DEFAULT_STORE_ID,
-    headerText: '*** RECIBO DE VENTA ***\nTienda Principal\nNIT: 123456789-1\nDir: Calle Principal 123',
-    footerText: '¡Gracias por su compra!\nVisite nuestra web: www.tienda.com\nTel: +57 300 123 4567',
-    showLogo: true,
-    logoUrl: '',
-    thermalWidth: 58,
-    fontSize: 11,
-    showDate: true,
-    showEmployee: true,
-    showCustomer: true,
-    showInvoiceNumber: true,
-    showPaymentMethod: true,
-    showItemDetails: true,
-    showTotals: true,
-    isActive: true
-  }
-];
-
-const mockCustomers: Customer[] = [
-  {
-    id: '1',
-    name: 'Juan Pérez',
-    email: 'juan@email.com',
-    phone: '+57 300 123 4567',
-    address: 'Calle 123, Ciudad',
-    storeId: DEFAULT_STORE_ID,
-    totalPurchases: 5500000,
-    lastPurchase: new Date('2024-01-15')
-  }
-];
-
-const mockUsers: User[] = [
-  {
-    id: '1',
-    username: 'admin',
-    email: 'admin@tienda.com',
-    role: 'admin',
-    storeId: DEFAULT_STORE_ID,
-    createdAt: new Date(),
-    isActive: true
-  }
-];
-
-const mockSuppliers: Supplier[] = [
-  {
-    id: '1',
-    name: 'Proveedor Tech SA',
-    email: 'ventas@proveedortech.com',
-    phone: '+57 300 555 0001',
-    address: 'Zona Industrial, Ciudad',
-    contactPerson: 'Carlos Mendoza',
-    isActive: true
-  }
-];
-
 interface DataProviderProps {
   children: ReactNode;
 }
@@ -201,7 +103,6 @@ export function DataProvider({ children }: DataProviderProps) {
   const [isConnected, setIsConnected] = useState(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   
-  // ✅ Nuevos estados para carga progresiva
   const [hasInitialData, setHasInitialData] = useState(false);
   const [criticalDataLoaded, setCriticalDataLoaded] = useState(false);
   const [secondaryDataLoaded, setSecondaryDataLoaded] = useState(false);
@@ -219,57 +120,15 @@ export function DataProvider({ children }: DataProviderProps) {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [purchases, setPurchases] = useState<Purchase[]>([]);
-  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>(mockPaymentMethods);
-  const [expenseCategories, setExpenseCategories] = useState<string[]>(mockExpenseCategories);
-  const [receiptTemplates, setReceiptTemplates] = useState<ReceiptTemplate[]>(mockReceiptTemplates);
-  const [users, setUsers] = useState<User[]>(mockUsers);
-  const [suppliers, setSuppliers] = useState<Supplier[]>(mockSuppliers);
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
+  const [expenseCategories, setExpenseCategories] = useState<string[]>([]);
+  const [receiptTemplates, setReceiptTemplates] = useState<ReceiptTemplate[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [cashRegisters, setCashRegisters] = useState<CashRegister[]>([]);
   const [cashMovements, setCashMovements] = useState<CashMovement[]>([]);
   const [layaways, setLayaways] = useState<Layaway[]>([]);
   const [transfers, setTransfers] = useState<Transfer[]>([]);
-
-
-  // Load all data including users, suppliers, etc.
-  useEffect(() => {
-    const loadAllData = async () => {
-      if (!user?.storeId) return;
-
-      try {
-        // Load users
-        const usersResult = await SupabaseService.getAllUsers();
-        if (usersResult.length > 0) {
-          setUsers([...mockUsers, ...usersResult]);
-          localStorage.setItem('cached_users', JSON.stringify(usersResult));
-        }
-
-        // Load suppliers
-        const suppliersResult = await SupabaseService.getAllSuppliers();
-        if (suppliersResult.length > 0) {
-          setSuppliers([...mockSuppliers, ...suppliersResult]);
-        }
-
-        // Load payment methods
-        const paymentMethodsResult = await SupabaseService.getAllPaymentMethods();
-        if (paymentMethodsResult.length > 0) {
-          setPaymentMethods(paymentMethodsResult);
-        }
-
-        // Load receipt templates
-        const templatesResult = await SupabaseService.getAllReceiptTemplates(user.storeId);
-        if (templatesResult.length > 0) {
-          setReceiptTemplates([...mockReceiptTemplates, ...templatesResult]);
-        }
-
-      } catch (error) {
-        console.warn('Error cargando datos adicionales:', error);
-      }
-    };
-
-    if (isConnected && user?.storeId) {
-      loadAllData();
-    }
-  }, [isConnected, user?.storeId]);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('es-CO', {
@@ -279,60 +138,7 @@ export function DataProvider({ children }: DataProviderProps) {
     }).format(amount);
   };
 
-  // ✅ Función para cargar datos desde cache inmediatamente
-  const loadCachedData = async () => {
-    try {
-      console.log('Cargando datos desde cache...');
-      
-      const cachedProducts = localStorage.getItem('cached_products');
-      const cachedCustomers = localStorage.getItem('cached_customers');
-      const cachedSales = localStorage.getItem('cached_sales');
-
-      let hasCache = false;
-
-      if (cachedProducts) {
-        const products = JSON.parse(cachedProducts);
-        setProducts(products);
-        hasCache = true;
-        console.log(`Productos cargados desde cache: ${products.length}`);
-      }
-
-      if (cachedCustomers) {
-        const customers = JSON.parse(cachedCustomers);
-        setCustomers(customers);
-        hasCache = true;
-        console.log(`Clientes cargados desde cache: ${customers.length}`);
-      }
-
-      if (cachedSales) {
-        const sales = JSON.parse(cachedSales);
-        setSales(sales);
-        hasCache = true;
-        console.log(`Ventas cargadas desde cache: ${sales.length}`);
-      }
-
-      if (hasCache) {
-        setHasInitialData(true);
-        setCriticalDataLoaded(true);
-        setLoadingProgress(prev => ({ ...prev, critical: 100 }));
-        console.log('Datos críticos disponibles desde cache');
-      }
-
-    } catch (error) {
-      console.warn('Error cargando datos desde cache:', error);
-    }
-  };
-
-  // ✅ Función para guardar en cache
-  const saveToCache = (key: string, data: any) => {
-    try {
-      localStorage.setItem(key, JSON.stringify(data));
-    } catch (error) {
-      console.warn(`Error guardando ${key} en cache:`, error);
-    }
-  };
-
-  // ✅ Función para cargar datos críticos
+  // Función para cargar datos críticos desde Supabase
   const loadCriticalData = async () => {
     if (!user?.storeId) {
       console.log('No hay storeId disponible para cargar datos críticos');
@@ -340,7 +146,7 @@ export function DataProvider({ children }: DataProviderProps) {
     }
 
     try {
-      console.log('Cargando datos críticos...', { storeId: user.storeId });
+      console.log('🔄 Cargando datos críticos desde Supabase...', { storeId: user.storeId });
       setLoadingProgress(prev => ({ ...prev, critical: 10 }));
 
       // Cargar productos
@@ -348,8 +154,7 @@ export function DataProvider({ children }: DataProviderProps) {
       const productsResult = await SupabaseService.getAllProducts(user.storeId);
       if (productsResult) {
         setProducts(productsResult);
-        saveToCache('cached_products', productsResult);
-        console.log(`Productos cargados: ${productsResult.length}`);
+        console.log(`✅ Productos cargados: ${productsResult.length}`);
       }
 
       // Cargar clientes
@@ -357,8 +162,7 @@ export function DataProvider({ children }: DataProviderProps) {
       const customersResult = await SupabaseService.getAllCustomers(user.storeId);
       if (customersResult) {
         setCustomers(customersResult);
-        saveToCache('cached_customers', customersResult);
-        console.log(`Clientes cargados: ${customersResult.length}`);
+        console.log(`✅ Clientes cargados: ${customersResult.length}`);
       }
 
       setLoadingProgress(prev => ({ ...prev, critical: 100 }));
@@ -367,27 +171,21 @@ export function DataProvider({ children }: DataProviderProps) {
       setIsConnected(true);
       setConnectionError(null);
 
-      console.log('Datos críticos cargados exitosamente');
+      console.log('✅ Datos críticos cargados exitosamente');
 
-      // ✅ Iniciar carga de datos secundarios en segundo plano
+      // Iniciar carga de datos secundarios en segundo plano
       setTimeout(() => {
         loadSecondaryData();
       }, 500);
 
     } catch (error) {
-      console.error('Error cargando datos críticos:', error);
+      console.error('❌ Error cargando datos críticos:', error);
       setConnectionError('Error cargando datos críticos');
-      
-      // Si hay datos en cache, usarlos
-      if (products.length > 0 || customers.length > 0) {
-        setHasInitialData(true);
-        setCriticalDataLoaded(true);
-        console.log('Usando datos críticos desde cache debido a error de conexión');
-      }
+      setIsConnected(false);
     }
   };
 
-  // ✅ Función para cargar datos secundarios
+  // Función para cargar datos secundarios desde Supabase
   const loadSecondaryData = async () => {
     if (!user?.storeId) {
       console.log('No hay storeId disponible para cargar datos secundarios');
@@ -395,103 +193,147 @@ export function DataProvider({ children }: DataProviderProps) {
     }
 
     try {
-      console.log('Cargando datos secundarios en segundo plano...');
+      console.log('🔄 Cargando datos secundarios desde Supabase...');
       setLoadingProgress(prev => ({ ...prev, secondary: 10 }));
 
       // Cargar ventas
-      setLoadingProgress(prev => ({ ...prev, secondary: 25 }));
+      setLoadingProgress(prev => ({ ...prev, secondary: 15 }));
       try {
         const salesResult = await SupabaseService.getAllSales(user.storeId);
         if (salesResult) {
           setSales(salesResult);
-          saveToCache('cached_sales', salesResult);
-          console.log(`Ventas cargadas: ${salesResult.length}`);
+          console.log(`✅ Ventas cargadas: ${salesResult.length}`);
         }
       } catch (error) {
-        console.warn('Error cargando ventas:', error);
+        console.warn('⚠️ Error cargando ventas:', error);
       }
 
-// Cargar compras
-setLoadingProgress(prev => ({ ...prev, secondary: 40 }));
-try {
-  const purchasesResult = await SupabaseService.getAllPurchases(user.storeId);
-  if (purchasesResult) {
-    setPurchases(purchasesResult);
-    console.log(`Compras cargadas: ${purchasesResult.length}`);
-  }
-} catch (error) {
-  console.warn('Error cargando compras:', error);
-}
+      // Cargar compras
+      setLoadingProgress(prev => ({ ...prev, secondary: 25 }));
+      try {
+        const purchasesResult = await SupabaseService.getAllPurchases(user.storeId);
+        if (purchasesResult) {
+          setPurchases(purchasesResult);
+          console.log(`✅ Compras cargadas: ${purchasesResult.length}`);
+        }
+      } catch (error) {
+        console.warn('⚠️ Error cargando compras:', error);
+      }
 
-// ✅✅✅ AGREGAR ESTO (NUEVO) ✅✅✅
-// Cargar transferencias
-setLoadingProgress(prev => ({ ...prev, secondary: 45 }));
-try {
-  const transfersResult = await SupabaseService.getAllTransfers();
-  if (transfersResult) {
-    setTransfers(transfersResult);
-    console.log(`Transferencias cargadas: ${transfersResult.length}`);
-  }
-} catch (error) {
-  console.warn('Error cargando transferencias:', error);
-}
-// ✅✅✅ FIN DEL CÓDIGO NUEVO ✅✅✅
+      // Cargar transferencias
+      setLoadingProgress(prev => ({ ...prev, secondary: 35 }));
+      try {
+        const transfersResult = await SupabaseService.getAllTransfers();
+        if (transfersResult) {
+          setTransfers(transfersResult);
+          console.log(`✅ Transferencias cargadas: ${transfersResult.length}`);
+        }
+      } catch (error) {
+        console.warn('⚠️ Error cargando transferencias:', error);
+      }
 
-// Cargar gastos
-setLoadingProgress(prev => ({ ...prev, secondary: 50 }));
+      // Cargar gastos
+      setLoadingProgress(prev => ({ ...prev, secondary: 45 }));
       try {
         const expensesResult = await SupabaseService.getAllExpenses(user.storeId);
         if (expensesResult) {
           setExpenses(expensesResult);
-          console.log(`Gastos cargados: ${expensesResult.length}`);
+          console.log(`✅ Gastos cargados: ${expensesResult.length}`);
         }
       } catch (error) {
-        console.warn('Error cargando gastos:', error);
+        console.warn('⚠️ Error cargando gastos:', error);
       }
 
       // Cargar cotizaciones
-      setLoadingProgress(prev => ({ ...prev, secondary: 60 }));
+      setLoadingProgress(prev => ({ ...prev, secondary: 55 }));
       try {
         const quotesResult = await SupabaseService.getAllQuotes(user.storeId);
         if (quotesResult) {
           setQuotes(quotesResult);
-          console.log(`Cotizaciones cargadas: ${quotesResult.length}`);
+          console.log(`✅ Cotizaciones cargadas: ${quotesResult.length}`);
         }
       } catch (error) {
-        console.warn('Error cargando cotizaciones:', error);
+        console.warn('⚠️ Error cargando cotizaciones:', error);
       }
 
       // Cargar cajas registradoras
-      setLoadingProgress(prev => ({ ...prev, secondary: 75 }));
+      setLoadingProgress(prev => ({ ...prev, secondary: 65 }));
       try {
         const cashRegistersResult = await SupabaseService.getAllCashRegisters(user.storeId);
         if (cashRegistersResult) {
           setCashRegisters(cashRegistersResult);
-          console.log(`Cajas registradoras cargadas: ${cashRegistersResult.length}`);
+          console.log(`✅ Cajas registradoras cargadas: ${cashRegistersResult.length}`);
         }
       } catch (error) {
-        console.warn('Error cargando cajas registradoras:', error);
+        console.warn('⚠️ Error cargando cajas registradoras:', error);
       }
 
       // Cargar separados
-      setLoadingProgress(prev => ({ ...prev, secondary: 90 }));
+      setLoadingProgress(prev => ({ ...prev, secondary: 75 }));
       try {
         const layawaysResult = await SupabaseService.getAllLayaways(user.storeId);
         if (layawaysResult) {
           setLayaways(layawaysResult);
-          console.log(`Separados cargados: ${layawaysResult.length}`);
+          console.log(`✅ Separados cargados: ${layawaysResult.length}`);
         }
       } catch (error) {
-        console.warn('Error cargando separados:', error);
+        console.warn('⚠️ Error cargando separados:', error);
+      }
+
+      // Cargar usuarios
+      setLoadingProgress(prev => ({ ...prev, secondary: 82 }));
+      try {
+        const usersResult = await SupabaseService.getAllUsers();
+        if (usersResult.length > 0) {
+          setUsers(usersResult);
+          console.log(`✅ Usuarios cargados: ${usersResult.length}`);
+        }
+      } catch (error) {
+        console.warn('⚠️ Error cargando usuarios:', error);
+      }
+
+      // Cargar proveedores
+      setLoadingProgress(prev => ({ ...prev, secondary: 88 }));
+      try {
+        const suppliersResult = await SupabaseService.getAllSuppliers();
+        if (suppliersResult.length > 0) {
+          setSuppliers(suppliersResult);
+          console.log(`✅ Proveedores cargados: ${suppliersResult.length}`);
+        }
+      } catch (error) {
+        console.warn('⚠️ Error cargando proveedores:', error);
+      }
+
+      // Cargar métodos de pago
+      setLoadingProgress(prev => ({ ...prev, secondary: 94 }));
+      try {
+        const paymentMethodsResult = await SupabaseService.getAllPaymentMethods();
+        if (paymentMethodsResult.length > 0) {
+          setPaymentMethods(paymentMethodsResult);
+          console.log(`✅ Métodos de pago cargados: ${paymentMethodsResult.length}`);
+        }
+      } catch (error) {
+        console.warn('⚠️ Error cargando métodos de pago:', error);
+      }
+
+      // Cargar plantillas de recibo
+      setLoadingProgress(prev => ({ ...prev, secondary: 97 }));
+      try {
+        const templatesResult = await SupabaseService.getAllReceiptTemplates(user.storeId);
+        if (templatesResult.length > 0) {
+          setReceiptTemplates(templatesResult);
+          console.log(`✅ Plantillas de recibo cargadas: ${templatesResult.length}`);
+        }
+      } catch (error) {
+        console.warn('⚠️ Error cargando plantillas de recibo:', error);
       }
 
       setLoadingProgress(prev => ({ ...prev, secondary: 100 }));
       setSecondaryDataLoaded(true);
-      console.log('Datos secundarios cargados exitosamente');
+      console.log('✅ Datos secundarios cargados exitosamente');
 
     } catch (error) {
-      console.error('Error cargando datos secundarios:', error);
-      // No marcar como error crítico, los datos secundarios pueden fallar sin bloquear la app
+      console.error('❌ Error cargando datos secundarios:', error);
     }
   };
 
@@ -501,10 +343,10 @@ setLoadingProgress(prev => ({ ...prev, secondary: 50 }));
     
     if (!authLoading) {
       if (user) {
-        console.log('Usuario autenticado, iniciando carga de datos...', { userId: user.id, storeId: user.storeId });
+        console.log('👤 Usuario autenticado, iniciando carga de datos...', { userId: user.id, storeId: user.storeId });
         connectToDatabase();
       } else {
-        console.log('Usuario no autenticado, limpiando datos...');
+        console.log('🚪 Usuario no autenticado, limpiando datos...');
         clearAllData();
         setIsLoading(false);
         setIsConnected(false);
@@ -526,14 +368,17 @@ setLoadingProgress(prev => ({ ...prev, secondary: 50 }));
     setCashRegisters([]);
     setCashMovements([]);
     setLayaways([]);
-    setPaymentMethods(mockPaymentMethods);
-    setExpenseCategories(mockExpenseCategories);
-    setReceiptTemplates(mockReceiptTemplates);
+    setPaymentMethods([]);
+    setExpenseCategories([]);
+    setReceiptTemplates([]);
+    setUsers([]);
+    setSuppliers([]);
+    setTransfers([]);
   };
 
   const connectToDatabase = async () => {
     if (!user) {
-      console.log('No hay usuario autenticado para conectar');
+      console.log('❌ No hay usuario autenticado para conectar');
       return;
     }
 
@@ -542,67 +387,36 @@ setLoadingProgress(prev => ({ ...prev, secondary: 50 }));
       setIsConnected(false);
       setConnectionError(null);
       
-      console.log('Conectando a Supabase...', { storeId: user.storeId });
+      console.log('🔌 Conectando a Supabase...', { storeId: user.storeId });
       
-      // ✅ Paso 1: Cargar datos desde cache inmediatamente
-      await loadCachedData();
-      
-      // ✅ Paso 2: Permitir acceso inmediato si hay cache, sino cargar datos críticos
-      if (!hasInitialData) {
-        console.log('No hay datos en cache, cargando datos críticos...');
-        await loadCriticalData();
-      } else {
-        console.log('Datos disponibles desde cache, actualizando en segundo plano...');
-        setIsConnected(true);
-        // Cargar datos críticos frescos en segundo plano
-        setTimeout(() => {
-          loadCriticalData();
-        }, 1000);
-      }
+      // Cargar datos críticos directamente desde Supabase
+      await loadCriticalData();
       
     } catch (error) {
-      console.error('Error conectando a base de datos:', error);
+      console.error('❌ Error conectando a base de datos:', error);
       setIsConnected(false);
       setConnectionError(error instanceof Error ? error.message : 'Error de conexión');
-      
-      // Si no hay datos en absoluto, cargar mock data
-      if (!hasInitialData) {
-        loadMockData();
-      }
     } finally {
       setIsLoading(false);
     }
   };
 
   const retryConnection = async () => {
-    console.log('Reintentando conexión...');
+    console.log('🔄 Reintentando conexión...');
     await connectToDatabase();
-  };
-
-  const loadMockData = () => {
-    console.log('Cargando datos mock como fallback');
-    setProducts(mockProducts);
-    setSales([]);
-    setCustomers(mockCustomers);
-    setExpenses([]);
-    setCashRegisters([]);
-    setCashMovements([]);
-    setLayaways([]);
-    setHasInitialData(true);
-    setCriticalDataLoaded(true);
   };
 
   const refreshData = async () => {
     if (!user) {
-      console.log('No hay usuario autenticado');
+      console.log('❌ No hay usuario autenticado');
       return;
     }
 
-    console.log('Refrescando todos los datos...');
+    console.log('🔄 Refrescando todos los datos desde Supabase...');
     await loadCriticalData();
   };
 
-  // ✅ El resto de las funciones CRUD se mantienen igual pero con mejor manejo de cache
+  // ===================== PRODUCTOS =====================
   const addProduct = async (product: Product) => {
     const normalized: Product = {
       ...product,
@@ -611,36 +425,15 @@ setLoadingProgress(prev => ({ ...prev, secondary: 50 }));
     };
 
     try {
-      // Optimistic update
-      setProducts(prev => {
-        const updated = [...prev, normalized];
-        saveToCache('cached_products', updated);
-        return updated;
-      });
-
-      if (isConnected) {
-        try {
-          const savedProduct = await SupabaseService.saveProduct(normalized);
-          setProducts(prev => {
-            const updated = prev.map(p => p.id === normalized.id ? savedProduct : p);
-            saveToCache('cached_products', updated);
-            return updated;
-          });
-          console.log('Producto guardado en Supabase:', normalized.name);
-        } catch (error) {
-          console.warn('Error guardando en Supabase, manteniendo local:', error);
-        }
-      } else {
-        console.log('Producto guardado offline:', normalized.name);
-      }
+      // Guardar directamente en Supabase
+      const savedProduct = await SupabaseService.saveProduct(normalized);
+      setProducts(prev => [...prev, savedProduct]);
+      console.log('✅ Producto guardado en Supabase:', savedProduct.name);
       
+      // Guardar en IndexedDB como respaldo
+      await OfflineService.saveProductOffline(savedProduct);
     } catch (error) {
-      setProducts(prev => {
-        const updated = prev.filter(p => p.id !== normalized.id);
-        saveToCache('cached_products', updated);
-        return updated;
-      });
-      console.error('Error guardando producto:', error);
+      console.error('❌ Error guardando producto:', error);
       throw error;
     }
   };
@@ -653,36 +446,20 @@ setLoadingProgress(prev => ({ ...prev, secondary: 50 }));
     };
 
     try {
-      const originalProduct = products.find(p => p.id === normalized.id);
-      setProducts(prev => {
-        const updated = prev.map(p => p.id === normalized.id ? normalized : p);
-        saveToCache('cached_products', updated);
-        return updated;
-      });
-
-      if (isConnected) {
-        const savedProduct = await SupabaseService.saveProduct(normalized);
-        setProducts(prev => {
-          const updated = prev.map(p => p.id === savedProduct.id ? savedProduct : p);
-          saveToCache('cached_products', updated);
-          return updated;
-        });
-        console.log('Producto actualizado en Supabase:', normalized.name);
-      }
+      // Actualizar en Supabase
+      const savedProduct = await SupabaseService.saveProduct(normalized);
+      setProducts(prev => prev.map(p => p.id === savedProduct.id ? savedProduct : p));
+      console.log('✅ Producto actualizado en Supabase:', savedProduct.name);
+      
+      // Actualizar en IndexedDB
+      await OfflineService.saveProductOffline(savedProduct);
     } catch (error) {
-      const originalProduct = products.find(p => p.id === normalized.id);
-      if (originalProduct) {
-        setProducts(prev => {
-          const updated = prev.map(p => p.id === normalized.id ? originalProduct : p);
-          saveToCache('cached_products', updated);
-          return updated;
-        });
-      }
-      console.error('Error actualizando producto:', error);
+      console.error('❌ Error actualizando producto:', error);
       throw error;
     }
   };
 
+  // ===================== VENTAS =====================
   const addSale = async (sale: Sale) => {
     const normalized: Sale = {
       ...sale,
@@ -693,24 +470,22 @@ setLoadingProgress(prev => ({ ...prev, secondary: 50 }));
     };
     
     try {
-      setSales(prev => {
-        const updated = [...prev, normalized];
-        saveToCache('cached_sales', updated);
-        return updated;
-      });
-
-      setProducts(prev => {
-        const updated = prev.map(p => {
+      // Guardar en Supabase primero
+      await SupabaseService.saveSale(normalized);
+      setSales(prev => [normalized, ...prev]);
+      
+      // Actualizar stock de productos
+      setProducts(prev => 
+        prev.map(p => {
           const saleItem = normalized.items.find(item => item.productId === p.id);
           if (saleItem) {
             return { ...p, stock: p.stock - saleItem.quantity };
           }
           return p;
-        });
-        saveToCache('cached_products', updated);
-        return updated;
-      });
+        })
+      );
 
+      // Crear movimiento de caja
       const cashMovement: CashMovement = {
         id: crypto.randomUUID(),
         storeId: normalized.storeId,
@@ -723,26 +498,12 @@ setLoadingProgress(prev => ({ ...prev, secondary: 50 }));
       };
       setCashMovements(prev => [...prev, cashMovement]);
 
-      if (isConnected) {
-        try {
-          await SupabaseService.saveSale(normalized);
-          console.log('Venta guardada en Supabase:', normalized.invoiceNumber);
-        } catch (error) {
-          console.warn('Error guardando en Supabase, guardando offline:', error);
-          await OfflineService.saveSaleOffline(normalized);
-        }
-      } else {
-        await OfflineService.saveSaleOffline(normalized);
-        console.log('Venta guardada offline:', normalized.invoiceNumber);
-      }
+      console.log('✅ Venta guardada en Supabase:', normalized.invoiceNumber);
+      
+      // Guardar en IndexedDB como respaldo
+      await OfflineService.saveSaleOffline(normalized);
     } catch (error) {
-      setSales(prev => {
-        const updated = prev.filter(s => s.id !== normalized.id);
-        saveToCache('cached_sales', updated);
-        return updated;
-      });
-      setCashMovements(prev => prev.filter(m => m.referenceId !== normalized.id));
-      console.error('Error guardando venta:', error);
+      console.error('❌ Error guardando venta:', error);
       throw error;
     }
   };
@@ -757,64 +518,28 @@ setLoadingProgress(prev => ({ ...prev, secondary: 50 }));
     };
 
     try {
-      const originalSale = sales.find(s => s.id === normalized.id);
-      setSales(prev => {
-        const updated = prev.map(s => s.id === normalized.id ? normalized : s);
-        saveToCache('cached_sales', updated);
-        return updated;
-      });
-
-      if (isConnected) {
-        await SupabaseService.updateSale(normalized);
-        console.log('Venta actualizada en Supabase:', normalized.invoiceNumber);
-      }
+      await SupabaseService.updateSale(normalized);
+      setSales(prev => prev.map(s => s.id === normalized.id ? normalized : s));
+      console.log('✅ Venta actualizada en Supabase:', normalized.invoiceNumber);
     } catch (error) {
-      const originalSale = sales.find(s => s.id === normalized.id);
-      if (originalSale) {
-        setSales(prev => {
-          const updated = prev.map(s => s.id === normalized.id ? originalSale : s);
-          saveToCache('cached_sales', updated);
-          return updated;
-        });
-      }
-      console.error('Error actualizando venta:', error);
+      console.error('❌ Error actualizando venta:', error);
       throw error;
     }
   };
 
   const deleteSale = async (id: string) => {
     try {
-      const originalSale = sales.find(s => s.id === id);
-      if (!originalSale) {
-        throw new Error('Venta no encontrada');
-      }
-
-      setSales(prev => {
-        const updated = prev.filter(s => s.id !== id);
-        saveToCache('cached_sales', updated);
-        return updated;
-      });
-
-      if (isConnected) {
-        await SupabaseService.deleteSale(id);
-      }
-
+      await SupabaseService.deleteSale(id);
+      setSales(prev => prev.filter(s => s.id !== id));
       setCashMovements(prev => prev.filter(m => m.referenceId !== id));
-      console.log('Venta eliminada:', originalSale.invoiceNumber);
+      console.log('✅ Venta eliminada');
     } catch (error) {
-      const originalSale = sales.find(s => s.id === id);
-      if (originalSale) {
-        setSales(prev => {
-          const updated = [...prev, originalSale];
-          saveToCache('cached_sales', updated);
-          return updated;
-        });
-      }
-      console.error('Error eliminando venta:', error);
+      console.error('❌ Error eliminando venta:', error);
       throw error;
     }
   };
 
+  // ===================== CLIENTES =====================
   const addCustomer = async (customer: Customer) => {
     const normalizedCustomer = {
       ...customer,
@@ -822,63 +547,27 @@ setLoadingProgress(prev => ({ ...prev, secondary: 50 }));
     };
     
     try {
-      setCustomers(prev => {
-        const updated = [...prev, normalizedCustomer];
-        saveToCache('cached_customers', updated);
-        return updated;
-      });
-      
-      if (isConnected) {
-        try {
-          const savedCustomer = await SupabaseService.saveCustomer(normalizedCustomer);
-          setCustomers(prev => {
-            const updated = prev.map(c => c.id === savedCustomer.id ? savedCustomer : c);
-            saveToCache('cached_customers', updated);
-            return updated;
-          });
-          console.log('Cliente guardado en Supabase:', customer.name);
-        } catch (error) {
-          console.warn('Error guardando en Supabase, manteniendo local:', error);
-        }
-      } else {
-        console.log('Cliente guardado offline:', customer.name);
-      }
-      
+      const savedCustomer = await SupabaseService.saveCustomer(normalizedCustomer);
+      setCustomers(prev => [...prev, savedCustomer]);
+      console.log('✅ Cliente guardado en Supabase:', savedCustomer.name);
     } catch (error) {
-      setCustomers(prev => {
-        const updated = prev.filter(c => c.id !== normalizedCustomer.id);
-        saveToCache('cached_customers', updated);
-        return updated;
-      });
-      console.error('Error guardando cliente:', error);
+      console.error('❌ Error guardando cliente:', error);
       throw error;
     }
   };
 
   const updateCustomer = async (updatedCustomer: Customer) => {
     try {
-      if (isConnected) {
-        const savedCustomer = await SupabaseService.saveCustomer(updatedCustomer);
-        setCustomers(prev => {
-          const updated = prev.map(c => c.id === savedCustomer.id ? savedCustomer : c);
-          saveToCache('cached_customers', updated);
-          return updated;
-        });
-        console.log('Cliente actualizado en Supabase:', updatedCustomer.name);
-      } else {
-        setCustomers(prev => {
-          const updated = prev.map(c => c.id === updatedCustomer.id ? updatedCustomer : c);
-          saveToCache('cached_customers', updated);
-          return updated;
-        });
-        console.log('Cliente actualizado offline:', updatedCustomer.name);
-      }
+      const savedCustomer = await SupabaseService.saveCustomer(updatedCustomer);
+      setCustomers(prev => prev.map(c => c.id === savedCustomer.id ? savedCustomer : c));
+      console.log('✅ Cliente actualizado en Supabase:', savedCustomer.name);
     } catch (error) {
-      console.error('Error actualizando cliente:', error);
+      console.error('❌ Error actualizando cliente:', error);
       throw error;
     }
   };
 
+  // ===================== GASTOS =====================
   const addExpense = async (expense: Expense) => {
     const normalizedExpense = {
       ...expense,
@@ -887,7 +576,8 @@ setLoadingProgress(prev => ({ ...prev, secondary: 50 }));
     };
     
     try {
-      setExpenses(prev => [...prev, normalizedExpense]);
+      await SupabaseService.saveExpense(normalizedExpense);
+      setExpenses(prev => [normalizedExpense, ...prev]);
       
       const cashMovement: CashMovement = {
         id: crypto.randomUUID(),
@@ -901,28 +591,15 @@ setLoadingProgress(prev => ({ ...prev, secondary: 50 }));
       };
       setCashMovements(prev => [...prev, cashMovement]);
       
-      if (isConnected) {
-        try {
-          await SupabaseService.saveExpense(normalizedExpense);
-          console.log('Gasto guardado en Supabase:', expense.description);
-        } catch (error) {
-          console.warn('Error guardando en Supabase, guardando offline:', error);
-          await OfflineService.saveExpenseOffline(normalizedExpense);
-        }
-      } else {
-        await OfflineService.saveExpenseOffline(normalizedExpense);
-        console.log('Gasto guardado offline:', expense.description);
-      }
-      
+      console.log('✅ Gasto guardado en Supabase:', expense.description);
+      await OfflineService.saveExpenseOffline(normalizedExpense);
     } catch (error) {
-      setExpenses(prev => prev.filter(e => e.id !== normalizedExpense.id));
-      setCashMovements(prev => prev.filter(m => m.referenceId !== normalizedExpense.id));
-      console.error('Error guardando gasto:', error);
+      console.error('❌ Error guardando gasto:', error);
       throw error;
     }
   };
 
-  // Mock implementations for other features
+  // ===================== COTIZACIONES =====================
   const addQuote = async (quote: Quote) => {
     const normalized: Quote = {
       ...quote,
@@ -932,22 +609,11 @@ setLoadingProgress(prev => ({ ...prev, secondary: 50 }));
     };
 
     try {
-      // Optimistic update
-      setQuotes(prev => [...prev, normalized]);
-
-      if (isConnected) {
-        try {
-          await SupabaseService.saveQuote(normalized);
-          console.log('Cotización guardada en Supabase');
-        } catch (error) {
-          console.warn('Error guardando cotización en Supabase:', error);
-        }
-      } else {
-        console.log('Cotización guardada offline');
-      }
+      await SupabaseService.saveQuote(normalized);
+      setQuotes(prev => [normalized, ...prev]);
+      console.log('✅ Cotización guardada en Supabase');
     } catch (error) {
-      setQuotes(prev => prev.filter(q => q.id !== normalized.id));
-      console.error('Error guardando cotización:', error);
+      console.error('❌ Error guardando cotización:', error);
       throw error;
     }
   };
@@ -961,59 +627,43 @@ setLoadingProgress(prev => ({ ...prev, secondary: 50 }));
     };
 
     try {
-      const originalQuote = quotes.find(q => q.id === normalized.id);
+      await SupabaseService.updateQuote(normalized);
       setQuotes(prev => prev.map(q => q.id === normalized.id ? normalized : q));
-
-      if (isConnected) {
-        try {
-          await SupabaseService.updateQuote(normalized);
-          console.log('Cotización actualizada en Supabase');
-        } catch (error) {
-          console.warn('Error actualizando cotización en Supabase:', error);
-        }
-      }
+      console.log('✅ Cotización actualizada en Supabase');
     } catch (error) {
-      const originalQuote = quotes.find(q => q.id === normalized.id);
-      if (originalQuote) {
-        setQuotes(prev => prev.map(q => q.id === normalized.id ? originalQuote : q));
-      }
-      console.error('Error actualizando cotización:', error);
+      console.error('❌ Error actualizando cotización:', error);
       throw error;
     }
   };
 
+  // ===================== COMPRAS =====================
   const addPurchase = async (purchase: Purchase) => {
-    // Optimistic UI
-    setPurchases(prev => [...prev, purchase]);
+    try {
+      await SupabaseService.savePurchase(purchase);
+      setPurchases(prev => [purchase, ...prev]);
 
-    // Compute new stocks from current products snapshot
-    const currentProducts = products;
-    const newStocks = new Map<string, number>();
-    purchase.items.forEach(item => {
-      const current = currentProducts.find(p => p.id === item.productId)?.stock || 0;
-      newStocks.set(item.productId, current + item.quantity);
-    });
+      // Actualizar stock de productos
+      const stockUpdates = new Map<string, number>();
+      purchase.items.forEach(item => {
+        const current = products.find(p => p.id === item.productId)?.stock || 0;
+        stockUpdates.set(item.productId, current + item.quantity);
+      });
 
-    // Update local products
-    setProducts(prev => {
-      const updated = prev.map(p => newStocks.has(p.id) ? { ...p, stock: newStocks.get(p.id)! } : p);
-      saveToCache('cached_products', updated);
-      return updated;
-    });
+      setProducts(prev => 
+        prev.map(p => stockUpdates.has(p.id) ? { ...p, stock: stockUpdates.get(p.id)! } : p)
+      );
 
-    // Persist to Supabase
-    if (isConnected) {
-      try {
-        await SupabaseService.savePurchase(purchase);
-        // Update product stock in Supabase
-        await Promise.all(
-          Array.from(newStocks.entries()).map(([productId, stock]) =>
-            SupabaseService.updateProductStock(productId, stock)
-          )
-        );
-      } catch (error) {
-        console.error('Error guardando compra en Supabase:', error);
-      }
+      // Actualizar stock en Supabase
+      await Promise.all(
+        Array.from(stockUpdates.entries()).map(([productId, stock]) =>
+          SupabaseService.updateProductStock(productId, stock)
+        )
+      );
+
+      console.log('✅ Compra guardada en Supabase');
+    } catch (error) {
+      console.error('❌ Error guardando compra:', error);
+      throw error;
     }
   };
 
@@ -1022,7 +672,7 @@ setLoadingProgress(prev => ({ ...prev, secondary: 50 }));
       const original = purchases.find(p => p.id === updatedPurchase.id);
       if (!original) throw new Error('Compra no encontrada');
 
-      // Compute stock deltas per product
+      // Calcular diferencias de stock
       const oldMap = new Map<string, number>();
       original.items.forEach(it => oldMap.set(it.productId, (oldMap.get(it.productId) || 0) + it.quantity));
       const newMap = new Map<string, number>();
@@ -1030,35 +680,30 @@ setLoadingProgress(prev => ({ ...prev, secondary: 50 }));
 
       const affected = new Set<string>([...Array.from(oldMap.keys()), ...Array.from(newMap.keys())]);
 
-      // Capture previous products snapshot for rollback
-      const prevProducts = products;
-
-      // Apply local stock updates
+      // Actualizar stock local
       const productNewStocks = new Map<string, number>();
-      setProducts(prev => {
-        return prev.map(prod => {
+      setProducts(prev => 
+        prev.map(prod => {
           if (!affected.has(prod.id)) return prod;
           const delta = (newMap.get(prod.id) || 0) - (oldMap.get(prod.id) || 0);
           const newStock = prod.stock + delta;
           productNewStocks.set(prod.id, newStock);
           return { ...prod, stock: newStock };
-        });
-      });
+        })
+      );
 
-      // Optimistically update purchase
+      // Actualizar en Supabase
+      await SupabaseService.savePurchase(updatedPurchase);
+      await Promise.all(
+        Array.from(productNewStocks.entries()).map(([productId, stock]) =>
+          SupabaseService.updateProductStock(productId, stock)
+        )
+      );
+
       setPurchases(prev => prev.map(p => p.id === updatedPurchase.id ? updatedPurchase : p));
-
-      if (isConnected) {
-        await SupabaseService.savePurchase(updatedPurchase);
-        await Promise.all(
-          Array.from(productNewStocks.entries()).map(([productId, stock]) =>
-            SupabaseService.updateProductStock(productId, stock)
-          )
-        );
-      }
+      console.log('✅ Compra actualizada en Supabase');
     } catch (error) {
-      console.error('Error actualizando compra:', error);
-      // Rollback local state if needed by reloading from refreshData
+      console.error('❌ Error actualizando compra:', error);
       await refreshData();
       throw error;
     }
@@ -1069,7 +714,7 @@ setLoadingProgress(prev => ({ ...prev, secondary: 50 }));
       const original = purchases.find(p => p.id === id);
       if (!original) throw new Error('Compra no encontrada');
 
-      // Compute resulting stocks after removing this purchase
+      // Calcular stock resultante después de eliminar la compra
       const affected = new Map<string, number>();
       original.items.forEach(it => {
         const current = products.find(p => p.id === it.productId)?.stock || 0;
@@ -1077,138 +722,173 @@ setLoadingProgress(prev => ({ ...prev, secondary: 50 }));
         affected.set(it.productId, newStock);
       });
 
-      // Optimistic UI: remove purchase and update stocks
+      // Eliminar de Supabase
+      await SupabaseService.deletePurchase(id);
+      
+      // Actualizar stock en Supabase
+      await Promise.all(
+        Array.from(affected.entries()).map(([productId, stock]) =>
+          SupabaseService.updateProductStock(productId, stock)
+        )
+      );
+
+      // Actualizar estado local
       setPurchases(prev => prev.filter(p => p.id !== id));
       setProducts(prev => prev.map(p => affected.has(p.id) ? { ...p, stock: affected.get(p.id)! } : p));
-
-      if (isConnected) {
-        await SupabaseService.deletePurchase(id);
-        await Promise.all(
-          Array.from(affected.entries()).map(([productId, stock]) =>
-            SupabaseService.updateProductStock(productId, stock)
-          )
-        );
-      }
+      
+      console.log('✅ Compra eliminada');
     } catch (error) {
-      console.error('Error eliminando compra:', error);
+      console.error('❌ Error eliminando compra:', error);
       await refreshData();
       throw error;
     }
   };
 
+  // ===================== USUARIOS =====================
   const addUser = async (user: User) => {
     try {
-      setUsers(prev => {
-        const updated = [...prev, user];
-        const nonMockUsers = updated.filter(u => !mockUsers.find(m => m.id === u.id));
-        localStorage.setItem('cached_users', JSON.stringify(nonMockUsers));
-        return updated;
-      });
-      
-      if (isConnected) {
-        const savedUser = await SupabaseService.saveUser(user);
-        setUsers(prev => {
-          const updated = prev.map(u => u.id === savedUser.id ? savedUser : u);
-          const nonMockUsers = updated.filter(u => !mockUsers.find(m => m.id === u.id));
-          localStorage.setItem('cached_users', JSON.stringify(nonMockUsers));
-          return updated;
-        });
-        console.log('Usuario guardado en Supabase:', user.username);
-      }
+      const savedUser = await SupabaseService.saveUser(user);
+      setUsers(prev => [...prev, savedUser]);
+      console.log('✅ Usuario guardado en Supabase:', user.username);
     } catch (error) {
-      setUsers(prev => {
-        const updated = prev.filter(u => u.id !== user.id);
-        const nonMockUsers = updated.filter(u => !mockUsers.find(m => m.id === u.id));
-        localStorage.setItem('cached_users', JSON.stringify(nonMockUsers));
-        return updated;
-      });
-      console.error('Error guardando usuario:', error);
+      console.error('❌ Error guardando usuario:', error);
       throw error;
     }
   };
 
   const updateUser = async (updatedUser: User) => {
     try {
-      setUsers(prev => {
-        const updated = prev.map(u => u.id === updatedUser.id ? updatedUser : u);
-        const nonMockUsers = updated.filter(u => !mockUsers.find(m => m.id === u.id));
-        localStorage.setItem('cached_users', JSON.stringify(nonMockUsers));
-        return updated;
-      });
-      
-      if (isConnected) {
-        const savedUser = await SupabaseService.saveUser(updatedUser);
-        setUsers(prev => {
-          const updated = prev.map(u => u.id === savedUser.id ? savedUser : u);
-          const nonMockUsers = updated.filter(u => !mockUsers.find(m => m.id === u.id));
-          localStorage.setItem('cached_users', JSON.stringify(nonMockUsers));
-          return updated;
-        });
-        console.log('Usuario actualizado en Supabase:', updatedUser.username);
-      }
+      const savedUser = await SupabaseService.saveUser(updatedUser);
+      setUsers(prev => prev.map(u => u.id === savedUser.id ? savedUser : u));
+      console.log('✅ Usuario actualizado en Supabase:', updatedUser.username);
     } catch (error) {
-      console.error('Error actualizando usuario:', error);
+      console.error('❌ Error actualizando usuario:', error);
       throw error;
     }
   };
 
-  // ✅ Eliminar usuario
   const deleteUser = async (id: string) => {
     try {
-      // No permitir eliminar usuarios mock
-      const isMockUser = mockUsers.find(u => u.id === id);
-      if (isMockUser) {
-        throw new Error('No se pueden eliminar usuarios del sistema');
-      }
-
-      setUsers(prev => {
-        const updated = prev.map(u => u.id === id ? { ...u, isActive: false } : u);
-        const nonMockUsers = updated.filter(u => !mockUsers.find(m => m.id === u.id));
-        localStorage.setItem('cached_users', JSON.stringify(nonMockUsers));
-        return updated;
-      });
-      
-      if (isConnected) {
-        await SupabaseService.deleteUser(id);
-        console.log('Usuario eliminado en Supabase');
-      }
+      await SupabaseService.deleteUser(id);
+      setUsers(prev => prev.map(u => u.id === id ? { ...u, isActive: false } : u));
+      console.log('✅ Usuario desactivado en Supabase');
     } catch (error) {
-      console.error('Error eliminando usuario:', error);
+      console.error('❌ Error desactivando usuario:', error);
       throw error;
     }
   };
 
+  // ===================== PROVEEDORES =====================
   const addSupplier = async (supplier: Supplier) => {
     try {
-      setSuppliers(prev => [...prev, supplier]);
-      
-      if (isConnected) {
-        const savedSupplier = await SupabaseService.saveSupplier(supplier);
-        setSuppliers(prev => prev.map(s => s.id === savedSupplier.id ? savedSupplier : s));
-        console.log('Proveedor guardado en Supabase:', supplier.name);
-      }
+      const savedSupplier = await SupabaseService.saveSupplier(supplier);
+      setSuppliers(prev => [...prev, savedSupplier]);
+      console.log('✅ Proveedor guardado en Supabase:', supplier.name);
     } catch (error) {
-      setSuppliers(prev => prev.filter(s => s.id !== supplier.id));
-      console.error('Error guardando proveedor:', error);
+      console.error('❌ Error guardando proveedor:', error);
       throw error;
     }
   };
 
   const updateSupplier = async (updatedSupplier: Supplier) => {
     try {
-      setSuppliers(prev => prev.map(s => s.id === updatedSupplier.id ? updatedSupplier : s));
-      
-      if (isConnected) {
-        const savedSupplier = await SupabaseService.saveSupplier(updatedSupplier);
-        setSuppliers(prev => prev.map(s => s.id === savedSupplier.id ? savedSupplier : s));
-        console.log('Proveedor actualizado en Supabase:', updatedSupplier.name);
-      }
+      const savedSupplier = await SupabaseService.saveSupplier(updatedSupplier);
+      setSuppliers(prev => prev.map(s => s.id === savedSupplier.id ? savedSupplier : s));
+      console.log('✅ Proveedor actualizado en Supabase:', updatedSupplier.name);
     } catch (error) {
-      console.error('Error actualizando proveedor:', error);
+      console.error('❌ Error actualizando proveedor:', error);
       throw error;
     }
   };
 
+  // ===================== MÉTODOS DE PAGO =====================
+  const addPaymentMethod = async (paymentMethod: PaymentMethod) => {
+    try {
+      const savedPaymentMethod = await SupabaseService.savePaymentMethod(paymentMethod);
+      setPaymentMethods(prev => [...prev, savedPaymentMethod]);
+      console.log('✅ Método de pago guardado en Supabase:', paymentMethod.name);
+    } catch (error) {
+      console.error('❌ Error guardando método de pago:', error);
+      throw error;
+    }
+  };
+
+  const updatePaymentMethod = async (updatedPaymentMethod: PaymentMethod) => {
+    try {
+      const savedPaymentMethod = await SupabaseService.savePaymentMethod(updatedPaymentMethod);
+      setPaymentMethods(prev => prev.map(pm => pm.id === savedPaymentMethod.id ? savedPaymentMethod : pm));
+      console.log('✅ Método de pago actualizado en Supabase:', updatedPaymentMethod.name);
+    } catch (error) {
+      console.error('❌ Error actualizando método de pago:', error);
+      throw error;
+    }
+  };
+
+  const deletePaymentMethod = async (id: string) => {
+    try {
+      await SupabaseService.deletePaymentMethod(id);
+      setPaymentMethods(prev => prev.map(pm => pm.id === id ? { ...pm, isActive: false } : pm));
+      console.log('✅ Método de pago desactivado en Supabase');
+    } catch (error) {
+      console.error('❌ Error desactivando método de pago:', error);
+      throw error;
+    }
+  };
+
+  // ===================== CATEGORÍAS DE GASTOS =====================
+  const addExpenseCategory = (category: string) => {
+    if (!expenseCategories.includes(category)) {
+      setExpenseCategories(prev => [...prev, category].sort());
+    }
+  };
+
+  const deleteExpenseCategory = (category: string) => {
+    setExpenseCategories(prev => prev.filter(c => c !== category));
+  };
+
+  // ===================== PLANTILLAS DE RECIBO =====================
+  const addReceiptTemplate = async (template: ReceiptTemplate) => {
+    try {
+      const normalizedTemplate = {
+        ...template,
+        storeId: template.storeId || user?.storeId || DEFAULT_STORE_ID
+      };
+      const savedTemplate = await SupabaseService.saveReceiptTemplate(normalizedTemplate);
+      setReceiptTemplates(prev => [...prev, savedTemplate]);
+      console.log('✅ Plantilla de recibo guardada en Supabase:', template.name);
+    } catch (error) {
+      console.error('❌ Error guardando plantilla de recibo:', error);
+      throw error;
+    }
+  };
+
+  const updateReceiptTemplate = async (updatedTemplate: ReceiptTemplate) => {
+    try {
+      const savedTemplate = await SupabaseService.saveReceiptTemplate(updatedTemplate);
+      setReceiptTemplates(prev => prev.map(rt => rt.id === savedTemplate.id ? savedTemplate : rt));
+      console.log('✅ Plantilla de recibo actualizada en Supabase:', updatedTemplate.name);
+    } catch (error) {
+      console.error('❌ Error actualizando plantilla de recibo:', error);
+      throw error;
+    }
+  };
+
+  const deleteReceiptTemplate = async (id: string) => {
+    try {
+      await SupabaseService.deleteReceiptTemplate(id);
+      setReceiptTemplates(prev => prev.map(rt => rt.id === id ? { ...rt, isActive: false } : rt));
+      console.log('✅ Plantilla de recibo desactivada en Supabase');
+    } catch (error) {
+      console.error('❌ Error desactivando plantilla de recibo:', error);
+      throw error;
+    }
+  };
+
+  const getActiveReceiptTemplate = (storeId: string): ReceiptTemplate | null => {
+    return receiptTemplates.find(rt => rt.storeId === storeId && rt.isActive) || null;
+  };
+
+  // ===================== CAJA REGISTRADORA =====================
   const openCashRegister = async (register: CashRegister) => {
     const normalizedRegister = {
       ...register,
@@ -1217,12 +897,8 @@ setLoadingProgress(prev => ({ ...prev, secondary: 50 }));
     };
     
     try {
-      if (isConnected) {
-        const savedRegister = await SupabaseService.saveCashRegister(normalizedRegister);
-        setCashRegisters(prev => [...prev, savedRegister]);
-      } else {
-        setCashRegisters(prev => [...prev, normalizedRegister]);
-      }
+      const savedRegister = await SupabaseService.saveCashRegister(normalizedRegister);
+      setCashRegisters(prev => [...prev, savedRegister]);
       
       const cashMovement: CashMovement = {
         id: crypto.randomUUID(),
@@ -1236,9 +912,9 @@ setLoadingProgress(prev => ({ ...prev, secondary: 50 }));
       };
       setCashMovements(prev => [...prev, cashMovement]);
       
-      console.log('Caja abierta');
+      console.log('✅ Caja abierta');
     } catch (error) {
-      console.error('Error abriendo caja:', error);
+      console.error('❌ Error abriendo caja:', error);
       throw error;
     }
   };
@@ -1278,12 +954,8 @@ setLoadingProgress(prev => ({ ...prev, secondary: 50 }));
         expensesTurno: expensesTurnoArr
       };
 
-      if (isConnected) {
-        const savedRegister = await SupabaseService.saveCashRegister(updatedRegister);
-        setCashRegisters(prev => prev.map(r => r.id === registerId ? savedRegister : r));
-      } else {
-        setCashRegisters(prev => prev.map(r => r.id === registerId ? updatedRegister : r));
-      }
+      const savedRegister = await SupabaseService.saveCashRegister(updatedRegister);
+      setCashRegisters(prev => prev.map(r => r.id === registerId ? savedRegister : r));
 
       const cashMovement: CashMovement = {
         id: crypto.randomUUID(),
@@ -1297,9 +969,9 @@ setLoadingProgress(prev => ({ ...prev, secondary: 50 }));
       };
       setCashMovements(prev => [...prev, cashMovement]);
       
-      console.log('Caja cerrada');
+      console.log('✅ Caja cerrada');
     } catch (error) {
-      console.error('Error cerrando caja:', error);
+      console.error('❌ Error cerrando caja:', error);
       throw error;
     }
   };
@@ -1308,6 +980,7 @@ setLoadingProgress(prev => ({ ...prev, secondary: 50 }));
     setCashMovements(prev => [...prev, movement]);
   };
 
+  // ===================== SEPARADOS / LAYAWAYS =====================
   const addLayaway = async (layaway: Layaway) => {
     const normalizedLayaway = {
       ...layaway,
@@ -1315,276 +988,147 @@ setLoadingProgress(prev => ({ ...prev, secondary: 50 }));
     };
     
     try {
-      if (isConnected) {
-        const savedLayaway = await SupabaseService.saveLayaway(normalizedLayaway);
-        setLayaways(prev => [...prev, savedLayaway]);
-      } else {
-        setLayaways(prev => [...prev, normalizedLayaway]);
-      }
+      const savedLayaway = await SupabaseService.saveLayaway(normalizedLayaway);
+      setLayaways(prev => [...prev, savedLayaway]);
       
+      // Actualizar stock de productos
       normalizedLayaway.items.forEach(item => {
-        setProducts(prev => {
-          const updated = prev.map(p => 
+        setProducts(prev => 
+          prev.map(p => 
             p.id === item.productId 
               ? { ...p, stock: p.stock - item.quantity }
               : p
-          );
-          saveToCache('cached_products', updated);
-          return updated;
-        });
+          )
+        );
       });
       
-      console.log('Separado guardado');
+      console.log('✅ Separado guardado');
     } catch (error) {
-      console.error('Error guardando separado:', error);
+      console.error('❌ Error guardando separado:', error);
       throw error;
     }
   };
 
   const updateLayaway = async (updatedLayaway: Layaway) => {
     try {
-      if (isConnected) {
-        const savedLayaway = await SupabaseService.saveLayaway(updatedLayaway);
-        setLayaways(prev => prev.map(l => l.id === savedLayaway.id ? savedLayaway : l));
-      } else {
-        setLayaways(prev => prev.map(l => l.id === updatedLayaway.id ? updatedLayaway : l));
-      }
-      console.log('Separado actualizado');
+      const savedLayaway = await SupabaseService.saveLayaway(updatedLayaway);
+      setLayaways(prev => prev.map(l => l.id === savedLayaway.id ? savedLayaway : l));
+      console.log('✅ Separado actualizado');
     } catch (error) {
-      console.error('Error actualizando separado:', error);
+      console.error('❌ Error actualizando separado:', error);
       throw error;
     }
   };
 
   const addLayawayPayment = async (layawayId: string, payment: LayawayPayment) => {
-    // Optimistic update
-    setLayaways(prev => prev.map(layaway => {
-      if (layaway.id === layawayId) {
-        const newTotalPaid = layaway.totalPaid + payment.amount;
-        const newRemainingBalance = layaway.total - newTotalPaid;
-        const newStatus = newRemainingBalance <= 0 ? 'completed' : 'active';
-        return {
-          ...layaway,
-          payments: [...layaway.payments, payment],
-          totalPaid: newTotalPaid,
-          remainingBalance: newRemainingBalance,
-          status: newStatus
+    try {
+      // Guardar en Supabase
+      const savedPayment = await SupabaseService.addLayawayPayment(layawayId, payment);
+      
+      // Actualizar estado local
+      setLayaways(prev => prev.map(layaway => {
+        if (layaway.id === layawayId) {
+          const newTotalPaid = layaway.totalPaid + payment.amount;
+          const newRemainingBalance = layaway.total - newTotalPaid;
+          const newStatus = newRemainingBalance <= 0 ? 'completed' : 'active';
+          return {
+            ...layaway,
+            payments: [...layaway.payments, savedPayment],
+            totalPaid: newTotalPaid,
+            remainingBalance: newRemainingBalance,
+            status: newStatus
+          };
+        }
+        return layaway;
+      }));
+
+      // Crear movimiento de caja
+      const layaway = layaways.find(l => l.id === layawayId);
+      if (layaway) {
+        const cashMovement: CashMovement = {
+          id: crypto.randomUUID(),
+          storeId: layaway.storeId,
+          employeeId: payment.employeeId,
+          type: 'sale',
+          amount: payment.amount,
+          description: `Abono separado #${layawayId}`,
+          date: payment.date,
+          referenceId: layawayId
         };
+        setCashMovements(prev => [...prev, cashMovement]);
       }
-      return layaway;
-    }));
 
-    // Persist in Supabase when connected, then reconcile
-    if (isConnected) {
-      try {
-        const saved = await SupabaseService.addLayawayPayment(layawayId, payment);
-        setLayaways(prev => prev.map(layaway => {
-          if (layaway.id !== layawayId) return layaway;
-          const payments = layaway.payments.map(p => (p.id === payment.id ? saved : p));
-          return { ...layaway, payments };
-        }));
-      } catch (error) {
-        console.error('Error guardando abono en Supabase:', error);
-      }
-    }
-
-    const layaway = layaways.find(l => l.id === layawayId);
-    if (layaway) {
-      const cashMovement: CashMovement = {
-        id: crypto.randomUUID(),
-        storeId: layaway.storeId,
-        employeeId: payment.employeeId,
-        type: 'sale',
-        amount: payment.amount,
-        description: `Abono separado #${layawayId}`,
-        date: payment.date,
-        referenceId: layawayId
-      };
-      setCashMovements(prev => [...prev, cashMovement]);
-    }
-  };
-
-  const addPaymentMethod = async (paymentMethod: PaymentMethod) => {
-    try {
-      setPaymentMethods(prev => [...prev, paymentMethod]);
-      
-      if (isConnected) {
-        const savedPaymentMethod = await SupabaseService.savePaymentMethod(paymentMethod);
-        setPaymentMethods(prev => prev.map(pm => pm.id === savedPaymentMethod.id ? savedPaymentMethod : pm));
-        console.log('Método de pago guardado en Supabase:', paymentMethod.name);
-      }
+      console.log('✅ Abono guardado');
     } catch (error) {
-      setPaymentMethods(prev => prev.filter(pm => pm.id !== paymentMethod.id));
-      console.error('Error guardando método de pago:', error);
+      console.error('❌ Error guardando abono:', error);
       throw error;
     }
   };
 
-  const updatePaymentMethod = async (updatedPaymentMethod: PaymentMethod) => {
+  // ===================== TRANSFERENCIAS =====================
+  const addTransfer = async (transfer: Transfer) => {
     try {
-      setPaymentMethods(prev => prev.map(pm =>
-        pm.id === updatedPaymentMethod.id ? updatedPaymentMethod : pm
-      ));
-      
-      if (isConnected) {
-        const savedPaymentMethod = await SupabaseService.savePaymentMethod(updatedPaymentMethod);
-        setPaymentMethods(prev => prev.map(pm => pm.id === savedPaymentMethod.id ? savedPaymentMethod : pm));
-        console.log('Método de pago actualizado en Supabase:', updatedPaymentMethod.name);
-      }
-    } catch (error) {
-      console.error('Error actualizando método de pago:', error);
-      throw error;
-    }
-  };
-
-  const deletePaymentMethod = async (id: string) => {
-    try {
-      setPaymentMethods(prev => prev.map(pm => 
-        pm.id === id ? { ...pm, isActive: false } : pm
-      ));
-      
-      if (isConnected) {
-        await SupabaseService.deletePaymentMethod(id);
-        console.log('Método de pago desactivado en Supabase');
-      }
-    } catch (error) {
-      console.error('Error desactivando método de pago:', error);
-      throw error;
-    }
-  };
-
-  const addExpenseCategory = (category: string) => {
-    if (!expenseCategories.includes(category)) {
-      setExpenseCategories(prev => [...prev, category].sort());
-    }
-  };
-
-  const deleteExpenseCategory = (category: string) => {
-    setExpenseCategories(prev => prev.filter(c => c !== category));
-  };
-
-  const addReceiptTemplate = async (template: ReceiptTemplate) => {
-    try {
-      const normalizedTemplate = {
-        ...template,
-        storeId: template.storeId || user?.storeId || DEFAULT_STORE_ID
-      };
-      setReceiptTemplates(prev => [...prev, normalizedTemplate]);
-      
-      if (isConnected) {
-        const savedTemplate = await SupabaseService.saveReceiptTemplate(normalizedTemplate);
-        setReceiptTemplates(prev => prev.map(rt => rt.id === savedTemplate.id ? savedTemplate : rt));
-        console.log('Plantilla de recibo guardada en Supabase:', template.name);
-      }
-    } catch (error) {
-      setReceiptTemplates(prev => prev.filter(rt => rt.id !== template.id));
-      console.error('Error guardando plantilla de recibo:', error);
-      throw error;
-    }
-  };
-
-  const updateReceiptTemplate = async (updatedTemplate: ReceiptTemplate) => {
-    try {
-      setReceiptTemplates(prev => prev.map(rt =>
-        rt.id === updatedTemplate.id ? updatedTemplate : rt
-      ));
-      
-      if (isConnected) {
-        const savedTemplate = await SupabaseService.saveReceiptTemplate(updatedTemplate);
-        setReceiptTemplates(prev => prev.map(rt => rt.id === savedTemplate.id ? savedTemplate : rt));
-        console.log('Plantilla de recibo actualizada en Supabase:', updatedTemplate.name);
-      }
-    } catch (error) {
-      console.error('Error actualizando plantilla de recibo:', error);
-      throw error;
-    }
-  };
-
-  const deleteReceiptTemplate = async (id: string) => {
-    try {
-      setReceiptTemplates(prev => prev.map(rt => 
-        rt.id === id ? { ...rt, isActive: false } : rt
-      ));
-      
-      if (isConnected) {
-        await SupabaseService.deleteReceiptTemplate(id);
-        console.log('Plantilla de recibo desactivada en Supabase');
-      }
-    } catch (error) {
-      console.error('Error desactivando plantilla de recibo:', error);
-      throw error;
-    }
-  };
-
-  const getActiveReceiptTemplate = (storeId: string): ReceiptTemplate | null => {
-    return receiptTemplates.find(rt => rt.storeId === storeId && rt.isActive) || null;
-  };
-
-  // 🟢 NUEVO PARA TRANSFERENCIAS
-const addTransfer = async (transfer: Transfer) => {
-  try {
-    setTransfers(prev => [transfer, ...prev]);
-
-    // Ajustar stock origen/destino
-    const stockUpdates: Record<string, number> = {};
-
-    transfer.items.forEach(item => {
-      const origin = products.find(p => p.id === item.productId && p.storeId === transfer.fromStoreId);
-      const dest = products.find(p => p.sku === item.productSku && p.storeId === transfer.toStoreId);
-
-      if (origin) {
-        origin.stock = Math.max(0, origin.stock - item.quantity);
-        stockUpdates[origin.id] = origin.stock;
-      }
-
-      if (dest) {
-        dest.stock += item.quantity;
-        stockUpdates[dest.id] = dest.stock;
-      }
-    });
-
-    setProducts(prev =>
-      prev.map(p => stockUpdates[p.id] !== undefined ? { ...p, stock: stockUpdates[p.id] } : p)
-    );
-
-    if (isConnected) {
       await SupabaseService.saveTransfer(transfer);
+      setTransfers(prev => [transfer, ...prev]);
+
+      // Ajustar stock origen/destino
+      const stockUpdates: Record<string, number> = {};
+
+      transfer.items.forEach(item => {
+        const origin = products.find(p => p.id === item.productId && p.storeId === transfer.fromStoreId);
+        const dest = products.find(p => p.sku === item.productSku && p.storeId === transfer.toStoreId);
+
+        if (origin) {
+          const newStock = Math.max(0, origin.stock - item.quantity);
+          stockUpdates[origin.id] = newStock;
+        }
+
+        if (dest) {
+          const newStock = dest.stock + item.quantity;
+          stockUpdates[dest.id] = newStock;
+        }
+      });
+
+      // Actualizar stock local
+      setProducts(prev =>
+        prev.map(p => stockUpdates[p.id] !== undefined ? { ...p, stock: stockUpdates[p.id] } : p)
+      );
+
+      // Actualizar stock en Supabase
       for (const [productId, stock] of Object.entries(stockUpdates)) {
         await SupabaseService.updateProductStock(productId, stock);
       }
+
+      console.log('✅ Transferencia guardada:', transfer.id);
+    } catch (error) {
+      console.error('❌ Error guardando transferencia:', error);
+      throw error;
     }
+  };
 
-    console.log('Transferencia guardada:', transfer.id);
-  } catch (error) {
-    console.error('Error guardando transferencia:', error);
-  }
-};
-
-const updateTransfer = async (updated: Transfer) => {
-  try {
-    setTransfers(prev => prev.map(t => t.id === updated.id ? updated : t));
-    if (isConnected) {
+  const updateTransfer = async (updated: Transfer) => {
+    try {
       await SupabaseService.saveTransfer(updated);
+      setTransfers(prev => prev.map(t => t.id === updated.id ? updated : t));
+      console.log('✅ Transferencia actualizada:', updated.id);
+    } catch (error) {
+      console.error('❌ Error actualizando transferencia:', error);
+      throw error;
     }
-    console.log('Transferencia actualizada:', updated.id);
-  } catch (error) {
-    console.error('Error actualizando transferencia:', error);
-  }
-};
+  };
 
-const deleteTransfer = async (id: string) => {
-  try {
-    setTransfers(prev => prev.filter(t => t.id !== id));
-    if (isConnected) {
+  const deleteTransfer = async (id: string) => {
+    try {
       await SupabaseService.deleteTransfer(id);
+      setTransfers(prev => prev.filter(t => t.id !== id));
+      console.log('✅ Transferencia eliminada:', id);
+    } catch (error) {
+      console.error('❌ Error eliminando transferencia:', error);
+      throw error;
     }
-    console.log('Transferencia eliminada:', id);
-  } catch (error) {
-    console.error('Error eliminando transferencia:', error);
-  }
-};
+  };
 
-  // ✅ Solo marcar como loading cuando realmente esté bloqueando la UI
+  // Solo marcar como loading cuando realmente esté bloqueando la UI
   const isLoadingCombined = authLoading || (isLoading && !hasInitialData);
 
   const value = {
@@ -1602,10 +1146,10 @@ const deleteTransfer = async (id: string) => {
     expenseCategories,
     receiptTemplates,
     layaways,
+    transfers,
     isLoading: isLoadingCombined,
     isConnected,
     connectionError,
-    // ✅ Nuevas propiedades
     hasInitialData,
     loadingProgress,
     criticalDataLoaded,
@@ -1648,10 +1192,8 @@ const deleteTransfer = async (id: string) => {
     refreshData,
     connectToDatabase,
     retryConnection,
-    // ✅ Nuevas funciones
     loadCriticalData,
     loadSecondaryData,
-    transfers,
     addTransfer,
     updateTransfer,
     deleteTransfer,
