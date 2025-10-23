@@ -1331,17 +1331,10 @@ static async deleteTransfer(id: string): Promise<void> {
     }
 
     // Helper to fetch existing SKUs regardless of table
-    static async getExistingSkus(skus: string[], storeId?: string): Promise<Set<string>> {
+    static async getExistingSkus(skus: string[]): Promise<Set<string>> {
       const table = await this.resolveProductsTable();
       if (table === 'products') {
-        let query = supabase.from('products').select('sku').in('sku', skus);
-        
-        // ✅ Si se proporciona storeId, filtrar por tienda
-        if (storeId) {
-          query = query.eq('store_id', storeId);
-        }
-        
-        const { data, error } = await query;
+        const { data, error } = await supabase.from('products').select('sku').in('sku', skus);
         if (error) throw new Error(error.message);
         return new Set((data || []).map((d: any) => d.sku));
       }
