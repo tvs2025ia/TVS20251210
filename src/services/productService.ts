@@ -66,7 +66,7 @@ export class ProductService {
       const skus = validProducts.map(p => p.sku);
       let existingSkus: Set<string>;
       try {
-        existingSkus = await SupabaseService.getExistingSkus(skus, storeId);
+        existingSkus = await SupabaseService.getExistingSkus(skus);
       } catch (e) {
         const msg = e instanceof Error ? e.message : 'Error desconocido';
         errors.push(`Error verificando SKUs existentes: ${msg}`);
