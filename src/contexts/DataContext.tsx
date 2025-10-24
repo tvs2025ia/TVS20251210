@@ -581,12 +581,53 @@ export function DataProvider({ children }: DataProviderProps) {
 
   const deleteSale = async (id: string) => {
     try {
+      // 🔍 Buscar la venta antes de eliminarla
+      const saleToDelete = sales.find(s => s.id === id);
+      if (!saleToDelete) {
+        throw new Error('Venta no encontrada');
+      }
+  
+      console.log('📦 Restaurando inventario en Supabase...');
+      
+      // 💾 PRIMERO: Actualizar stock en Supabase
+      const stockUpdates = saleToDelete.items.map(async (item) => {
+        const product = products.find(p => p.id === item.productId);
+        if (product) {
+          const newStock = product.stock + item.quantity;
+          console.log(`  ↗️ ${product.name}: ${product.stock} → ${newStock} (+${item.quantity})`);
+          await SupabaseService.updateProductStock(item.productId, newStock);
+          return { productId: item.productId, newStock };
+        }
+        return null;
+      });
+      
+      const updatedStocks = await Promise.all(stockUpdates);
+      console.log('✅ Inventario restaurado en Supabase');
+  
+      // 🗑️ SEGUNDO: Eliminar la venta de Supabase
       await SupabaseService.deleteSale(id);
+      console.log('✅ Venta eliminada de Supabase');
+      
+      // 🎨 TERCERO: Actualizar estado local (UI) basado en lo que se guardó
+      setProducts(prev => 
+        prev.map(product => {
+          const updated = updatedStocks.find(u => u?.productId === product.id);
+          if (updated) {
+            return { ...product, stock: updated.newStock };
+          }
+          return product;
+        })
+      );
+      
       setSales(prev => prev.filter(s => s.id !== id));
       setCashMovements(prev => prev.filter(m => m.referenceId !== id));
-      console.log('✅ Venta eliminada');
+      
+      console.log('✅ Venta eliminada exitosamente');
     } catch (error) {
       console.error('❌ Error eliminando venta:', error);
+      // ♻️ Si algo falla, recargar TODO desde Supabase para garantizar consistencia
+      console.log('♻️ Recargando datos desde Supabase...');
+      await refreshData();
       throw error;
     }
   };
