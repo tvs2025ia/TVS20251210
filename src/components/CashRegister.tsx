@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useData } from '../contexts/DataContext';
 import { useStore } from '../contexts/StoreContext';
 import { useAuth } from '../contexts/AuthContext';
-import { CashRegister as CashRegisterType, CashMovement, Expense, Sale } from '../types';
+import { CashRegister as CashRegisterType, Expense, Sale, Layaway } from '../types';
 import { 
   Calculator, 
   DollarSign, 
@@ -13,11 +13,11 @@ import {
   AlertCircle,
   Plus,
   X,
-  CreditCard
+  Users
 } from 'lucide-react';
 
 export function CashRegister() {
-  const { cashRegisters, sales, expenses, openCashRegister, closeCashRegister, users } = useData();
+  const { cashRegisters, sales, expenses, layaways, openCashRegister, closeCashRegister, users } = useData();
   const { currentStore } = useStore();
   const { user } = useAuth();
   const [showOpenModal, setShowOpenModal] = useState(false);
@@ -34,8 +34,9 @@ export function CashRegister() {
   const currentRegister = storeRegisters.find((r: CashRegisterType) => r.status === 'open');
   const storeSales = sales.filter((s: Sale) => s.storeId === currentStore?.id);
   const storeExpenses = expenses.filter((e: Expense) => e.storeId === currentStore?.id);
+  const storeLayaways = layaways.filter((l: Layaway) => l.storeId === currentStore?.id);
 
-  // Filtrar ventas y egresos del turno actual
+  // Filtrar ventas, egresos y abonos del turno actual
   const salesSinceOpen = currentRegister
     ? storeSales.filter((s: Sale) => new Date(s.date) >= new Date(currentRegister.openedAt))
     : [];
@@ -44,7 +45,16 @@ export function CashRegister() {
     ? storeExpenses.filter((e: Expense) => new Date(e.date) >= new Date(currentRegister.openedAt))
     : [];
 
-  // 🟢 NUEVAS FUNCIONES PARA SEPARAR EFECTIVO Y OTROS MÉTODOS
+  // 🟢 OBTENER ABONOS DE SEPARADOS DEL TURNO ACTUAL
+  const layawayPaymentsSinceOpen = currentRegister
+    ? storeLayaways.flatMap((layaway: Layaway) => 
+        layaway.payments.filter((payment: any) => 
+          new Date(payment.date) >= new Date(currentRegister.openedAt)
+        )
+      )
+    : [];
+
+  // 🟢 FUNCIONES PARA SEPARAR EFECTIVO Y OTROS MÉTODOS
   const isCashPayment = (paymentMethod: string | undefined) => {
     if (!paymentMethod) return false;
     const method = paymentMethod.toLowerCase();
@@ -56,14 +66,29 @@ export function CashRegister() {
     return !isCashPayment(paymentMethod);
   };
 
-  // Cálculos para el turno actual
-  const ingresosEfectivoTurno = salesSinceOpen
+  // 🟢 CÁLCULOS PARA EL TURNO ACTUAL - INCLUYENDO ABONOS
+  const ventasEfectivoTurno = salesSinceOpen
     .filter((sale: Sale) => isCashPayment(sale.paymentMethod))
     .reduce((sum: number, sale: Sale) => sum + sale.total, 0);
 
-  const ingresosOtrosTurno = salesSinceOpen
+  const ventasOtrosTurno = salesSinceOpen
     .filter((sale: Sale) => isOtherPayment(sale.paymentMethod))
     .reduce((sum: number, sale: Sale) => sum + sale.total, 0);
+
+  const abonosEfectivoTurno = layawayPaymentsSinceOpen
+    .filter((payment: any) => isCashPayment(payment.paymentMethod))
+    .reduce((sum: number, payment: any) => sum + payment.amount, 0);
+
+  const abonosOtrosTurno = layawayPaymentsSinceOpen
+    .filter((payment: any) => isOtherPayment(payment.paymentMethod))
+    .reduce((sum: number, payment: any) => sum + payment.amount, 0);
+
+  // 🟢 TOTALES COMBINADOS (VENTAS + ABONOS)
+  const ingresosEfectivoTurno = ventasEfectivoTurno + abonosEfectivoTurno;
+  const ingresosOtrosTurno = ventasOtrosTurno + abonosOtrosTurno;
+
+  // 🟢 NUEVO: TOTAL INGRESOS DEL TURNO (TODOS LOS MÉTODOS)
+  const totalIngresosTurno = ingresosEfectivoTurno + ingresosOtrosTurno;
 
   const egresosEfectivoTurno = expensesSinceOpen
     .filter((expense: Expense) => isCashPayment(expense.paymentMethod))
@@ -85,7 +110,7 @@ export function CashRegister() {
     }).format(amount);
   };
 
-  // 🟢 CÁLCULOS DEL DÍA (existentes pero mejorados)
+  // 🟢 CÁLCULOS DEL DÍA
   const today = new Date();
   
   const isToday = (date: Date) => {
@@ -97,20 +122,31 @@ export function CashRegister() {
     );
   };
 
-  // Total ingresos hoy
-  const totalIngresosHoy = storeSales
-    .filter((sale: Sale) => isToday(new Date(sale.date)))
-    .reduce((sum: number, sale: Sale) => sum + sale.total, 0);
-
-  // Total ingresos en EFECTIVO hoy
-  const totalEfectivoHoy = storeSales
+  // Total ingresos hoy (ventas + abonos)
+  const ventasEfectivoHoy = storeSales
     .filter((sale: Sale) => isToday(new Date(sale.date)) && isCashPayment(sale.paymentMethod))
     .reduce((sum: number, sale: Sale) => sum + sale.total, 0);
 
-  // Total otros métodos de pago hoy
-  const totalOtrosMediosHoy = storeSales
+  const ventasOtrosHoy = storeSales
     .filter((sale: Sale) => isToday(new Date(sale.date)) && isOtherPayment(sale.paymentMethod))
     .reduce((sum: number, sale: Sale) => sum + sale.total, 0);
+
+  // 🟢 ABONOS DE HOY
+  const abonosHoy = storeLayaways.flatMap((layaway: Layaway) => 
+    layaway.payments.filter((payment: any) => isToday(new Date(payment.date)))
+  );
+
+  const abonosEfectivoHoy = abonosHoy
+    .filter((payment: any) => isCashPayment(payment.paymentMethod))
+    .reduce((sum: number, payment: any) => sum + payment.amount, 0);
+
+  const abonosOtrosHoy = abonosHoy
+    .filter((payment: any) => isOtherPayment(payment.paymentMethod))
+    .reduce((sum: number, payment: any) => sum + payment.amount, 0);
+
+  const totalEfectivoHoy = ventasEfectivoHoy + abonosEfectivoHoy;
+  const totalOtrosMediosHoy = ventasOtrosHoy + abonosOtrosHoy;
+  const totalIngresosHoy = totalEfectivoHoy + totalOtrosMediosHoy;
 
   // Total egresos hoy
   const totalEgresosHoy = storeExpenses
@@ -163,11 +199,11 @@ export function CashRegister() {
     return passesStart && passesEnd;
   });
 
-  // Obtener nombre de usuario por employeeId
+  // 🟢 MEJORADO: Obtener nombre de usuario por employeeId
   const getEmployeeName = (employeeId: string) => {
     if (!users || !employeeId) return 'Desconocido';
     const employee = users.find((u: any) => u.id === employeeId);
-    return employee ? employee.username : 'Desconocido';
+    return employee ? `${employee.username} (${employee.role})` : 'Desconocido';
   };
 
   return (
@@ -197,7 +233,7 @@ export function CashRegister() {
         )}
       </div>
 
-      {/* Current Register Status - MODIFICADO */}
+      {/* Current Register Status - MEJORADO */}
       {currentRegister ? (
         <div className="bg-green-50 border border-green-200 rounded-xl p-4 sm:p-6">
           <div className="flex items-center mb-4">
@@ -205,7 +241,22 @@ export function CashRegister() {
             <h3 className="text-base sm:text-lg font-semibold text-green-900">Caja Abierta</h3>
           </div>
           
-          {/* 🟢 NUEVO: Resumen por tipo de pago */}
+          {/* 🟢 NUEVO: Total ingresos del turno */}
+          <div className="bg-white p-4 rounded-lg border border-blue-200 mb-4">
+            <h4 className="text-sm font-semibold text-blue-800 mb-2 flex items-center">
+              <TrendingUp className="w-4 h-4 mr-2" />
+              Resumen del Turno
+            </h4>
+            <div className="flex justify-between items-center">
+              <span className="text-gray-700 font-medium">Total ingresos del turno:</span>
+              <span className="text-lg font-bold text-blue-600">{formatCurrency(totalIngresosTurno)}</span>
+            </div>
+            <div className="text-xs text-gray-500 mt-1">
+              Incluye {salesSinceOpen.length} ventas y {layawayPaymentsSinceOpen.length} abonos en todos los métodos de pago
+            </div>
+          </div>
+          
+          {/* Resumen por tipo de pago */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
             {/* Efectivo */}
             <div className="bg-white p-4 rounded-lg border border-green-100">
@@ -216,8 +267,12 @@ export function CashRegister() {
                   <span className="font-medium">{formatCurrency(currentRegister.openingAmount)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Ingresos:</span>
-                  <span className="font-medium text-blue-600">+{formatCurrency(ingresosEfectivoTurno)}</span>
+                  <span className="text-gray-600">Ventas:</span>
+                  <span className="font-medium text-blue-600">+{formatCurrency(ventasEfectivoTurno)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">Abonos:</span>
+                  <span className="font-medium text-purple-600">+{formatCurrency(abonosEfectivoTurno)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600">Egresos:</span>
@@ -235,8 +290,12 @@ export function CashRegister() {
               <h4 className="text-sm font-semibold text-blue-800 mb-3">OTROS MÉTODOS</h4>
               <div className="space-y-2">
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Ingresos:</span>
-                  <span className="font-medium text-blue-600">+{formatCurrency(ingresosOtrosTurno)}</span>
+                  <span className="text-gray-600">Ventas:</span>
+                  <span className="font-medium text-blue-600">+{formatCurrency(ventasOtrosTurno)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">Abonos:</span>
+                  <span className="font-medium text-purple-600">+{formatCurrency(abonosOtrosTurno)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600">Egresos:</span>
@@ -251,8 +310,32 @@ export function CashRegister() {
           </div>
 
           <div className="bg-white p-3 sm:p-4 rounded-lg">
-            <p className="text-xs sm:text-sm text-green-600 font-medium mb-2">Empleado: {getEmployeeName(currentRegister.employeeId)}</p>
-            <p className="text-xs sm:text-sm text-green-600">Apertura: {new Date(currentRegister.openedAt).toLocaleString()}</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+              <div>
+                <p className="text-green-600 font-medium mb-1 flex items-center">
+                  <Users className="w-4 h-4 mr-2" />
+                  Empleado que abrió:
+                </p>
+                <p className="text-gray-700">{getEmployeeName(currentRegister.employeeId)}</p>
+                <p className="text-xs text-gray-500 mt-1">
+                  Apertura: {new Date(currentRegister.openedAt).toLocaleString()}
+                </p>
+              </div>
+              {currentRegister.closingEmployeeId && (
+                <div>
+                  <p className="text-red-600 font-medium mb-1 flex items-center">
+                    <Users className="w-4 h-4 mr-2" />
+                    Empleado que cerró:
+                  </p>
+                  <p className="text-gray-700">{getEmployeeName(currentRegister.closingEmployeeId)}</p>
+                  {currentRegister.closedAt && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Cierre: {new Date(currentRegister.closedAt).toLocaleString()}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       ) : (
@@ -265,7 +348,7 @@ export function CashRegister() {
         </div>
       )}
 
-      {/* 🟢 Today's Summary */}
+      {/* Today's Summary */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
         {/* Efectivo Hoy */}
         <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6 border border-gray-100">
@@ -274,7 +357,10 @@ export function CashRegister() {
             <div className="min-w-0 flex-1">
               <p className="text-xs sm:text-sm font-medium text-gray-600 truncate">Efectivo Hoy</p>
               <p className="text-lg sm:text-2xl font-bold text-green-600">{formatCurrency(totalEfectivoHoy)}</p>
-              <p className="text-xs text-gray-500">Solo ventas en efectivo</p>
+              <p className="text-xs text-gray-500">
+                {ventasEfectivoHoy > 0 && `Ventas: ${formatCurrency(ventasEfectivoHoy)}`}
+                {abonosEfectivoHoy > 0 && ` Abonos: ${formatCurrency(abonosEfectivoHoy)}`}
+              </p>
             </div>
           </div>
         </div>
@@ -350,157 +436,162 @@ export function CashRegister() {
         </div>
       </div>
 
-{/* 🟢 HISTORIAL DE CAJAS - VERSIÓN CORREGIDA */}
-<div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-  <div className="p-4 sm:p-6 border-b border-gray-200">
-    <h3 className="text-base sm:text-lg font-semibold text-gray-900">Historial de Cajas</h3>
-  </div>
-  
-  {/* Mobile Cards View - CORREGIDO */}
-  <div className="block sm:hidden">
-    {filteredRegisters
-      .sort((a: CashRegisterType, b: CashRegisterType) => 
-        new Date(b.openedAt).getTime() - new Date(a.openedAt).getTime()
-      )
-      .map((register: CashRegisterType) => (
-      <div key={register.id} className="border-b border-gray-200 p-4 space-y-3">
-        <div className="flex justify-between items-center">
-          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-            register.status === 'open' 
-              ? 'bg-green-100 text-green-800'
-              : 'bg-gray-100 text-gray-800'
-          }`}>
-            {register.status === 'open' ? 'Abierta' : 'Cerrada'}
-          </span>
+      {/* HISTORIAL DE CAJAS - MEJORADO */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="p-4 sm:p-6 border-b border-gray-200">
+          <h3 className="text-base sm:text-lg font-semibold text-gray-900">Historial de Cajas</h3>
         </div>
         
-        {/* Sección de usuarios */}
-        <div className="grid grid-cols-2 gap-3 text-sm">
-          <div>
-            <span className="text-gray-600">Abrió:</span>
-            <div className="font-medium">{getEmployeeName(register.employeeId)}</div>
-          </div>
-          <div>
-            <span className="text-gray-600">Cerró:</span>
-            <div className="font-medium">{register.closingEmployeeId ? getEmployeeName(register.closingEmployeeId) : '-'}</div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3 text-sm">
-          <div>
-            <span className="text-gray-600">Apertura:</span>
-            <div className="font-medium">{formatCurrency(register.openingAmount)}</div>
-            <div className="text-xs text-gray-500">{new Date(register.openedAt).toLocaleDateString()}</div>
-          </div>
-          <div>
-            <span className="text-gray-600">Esperado:</span>
-            <div className="font-medium">{register.expectedAmount ? formatCurrency(register.expectedAmount) : '-'}</div>
-          </div>
-          <div>
-            <span className="text-gray-600">Contado:</span>
-            <div className="font-medium">{register.closingAmount ? formatCurrency(register.closingAmount) : '-'}</div>
-          </div>
-          <div>
-            <span className="text-gray-600">Diferencia:</span>
-            <div className="font-medium">
-              {register.difference !== undefined ? (
-                <span className={register.difference === 0 ? 'text-green-600' : register.difference > 0 ? 'text-blue-600' : 'text-red-600'}>
-                  {register.difference > 0 ? '+' : ''}{formatCurrency(register.difference)}
+        {/* Mobile Cards View - MEJORADO */}
+        <div className="block sm:hidden">
+          {filteredRegisters
+            .sort((a: CashRegisterType, b: CashRegisterType) => 
+              new Date(b.openedAt).getTime() - new Date(a.openedAt).getTime()
+            )
+            .map((register: CashRegisterType) => (
+            <div key={register.id} className="border-b border-gray-200 p-4 space-y-3">
+              <div className="flex justify-between items-center">
+                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                  register.status === 'open' 
+                    ? 'bg-green-100 text-green-800'
+                    : 'bg-gray-100 text-gray-800'
+                }`}>
+                  {register.status === 'open' ? 'Abierta' : 'Cerrada'}
                 </span>
-              ) : '-'}
+              </div>
+              
+              {/* Sección de usuarios - MEJORADA */}
+              <div className="grid grid-cols-1 gap-3 text-sm">
+                <div>
+                  <span className="text-gray-600 font-medium">Abrió:</span>
+                  <div className="font-medium text-gray-900">{getEmployeeName(register.employeeId)}</div>
+                  <div className="text-xs text-gray-500">{new Date(register.openedAt).toLocaleString()}</div>
+                </div>
+                <div>
+                  <span className="text-gray-600 font-medium">Cerró:</span>
+                  <div className="font-medium text-gray-900">
+                    {register.closingEmployeeId ? getEmployeeName(register.closingEmployeeId) : '-'}
+                  </div>
+                  {register.closedAt && (
+                    <div className="text-xs text-gray-500">{new Date(register.closedAt).toLocaleString()}</div>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div>
+                  <span className="text-gray-600">Apertura:</span>
+                  <div className="font-medium">{formatCurrency(register.openingAmount)}</div>
+                </div>
+                <div>
+                  <span className="text-gray-600">Esperado:</span>
+                  <div className="font-medium">{register.expectedAmount ? formatCurrency(register.expectedAmount) : '-'}</div>
+                </div>
+                <div>
+                  <span className="text-gray-600">Contado:</span>
+                  <div className="font-medium">{register.closingAmount ? formatCurrency(register.closingAmount) : '-'}</div>
+                </div>
+                <div>
+                  <span className="text-gray-600">Diferencia:</span>
+                  <div className="font-medium">
+                    {register.difference !== undefined ? (
+                      <span className={register.difference === 0 ? 'text-green-600' : register.difference > 0 ? 'text-blue-600' : 'text-red-600'}>
+                        {register.difference > 0 ? '+' : ''}{formatCurrency(register.difference)}
+                      </span>
+                    ) : '-'}
+                  </div>
+                </div>
+              </div>
             </div>
-          </div>
+          ))}
         </div>
+
+        {/* Desktop Table View - MEJORADO */}
+        <div className="hidden sm:block overflow-x-auto">
+          <table className="w-full">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Estado
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Usuario Apertura
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Usuario Cierre
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Apertura
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Cierre
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Esperado
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Contado
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Diferencia
+                </th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {filteredRegisters
+                .sort((a: CashRegisterType, b: CashRegisterType) => 
+                  new Date(b.openedAt).getTime() - new Date(a.openedAt).getTime()
+                )
+                .map((register: CashRegisterType) => (
+                <tr key={register.id} className="hover:bg-gray-50">
+                  <td className="px-4 py-4 whitespace-nowrap">
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                      register.status === 'open' 
+                        ? 'bg-green-100 text-green-800'
+                        : 'bg-gray-100 text-gray-800'
+                    }`}>
+                      {register.status === 'open' ? 'Abierta' : 'Cerrada'}
+                    </span>
+                  </td>
+                  <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {getEmployeeName(register.employeeId)}
+                  </td>
+                  <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {register.closingEmployeeId ? getEmployeeName(register.closingEmployeeId) : '-'}
+                  </td>
+                  <td className="px-4 py-4 whitespace-nowrap">
+                    <div className="text-sm font-medium text-gray-900">{formatCurrency(register.openingAmount)}</div>
+                    <div className="text-sm text-gray-500">{new Date(register.openedAt).toLocaleDateString()}</div>
+                  </td>
+                  <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {register.closedAt ? new Date(register.closedAt).toLocaleString() : '-'}
+                  </td>
+                  <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {register.expectedAmount ? formatCurrency(register.expectedAmount) : '-'}
+                  </td>
+                  <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {register.closingAmount ? formatCurrency(register.closingAmount) : '-'}
+                  </td>
+                  <td className="px-4 py-4 whitespace-nowrap text-sm">
+                    {register.difference !== undefined ? (
+                      <span className={register.difference === 0 ? 'text-green-600' : register.difference > 0 ? 'text-blue-600' : 'text-red-600'}>
+                        {register.difference > 0 ? '+' : ''}{formatCurrency(register.difference)}
+                      </span>
+                    ) : '-'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {filteredRegisters.length === 0 && (
+          <div className="text-center py-12">
+            <Calculator className="w-12 h-12 sm:w-16 sm:h-16 text-gray-300 mx-auto mb-4" />
+            <p className="text-gray-500 text-base sm:text-lg">No hay registros de caja en este rango de fechas</p>
+          </div>
+        )}
       </div>
-    ))}
-  </div>
-
-  {/* Desktop Table View - CORREGIDO */}
-  <div className="hidden sm:block overflow-x-auto">
-    <table className="w-full">
-      <thead className="bg-gray-50">
-        <tr>
-          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-            Estado
-          </th>
-          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-            Usuario Apertura
-          </th>
-          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-            Usuario Cierre
-          </th>
-          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-            Apertura
-          </th>
-          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-            Cierre
-          </th>
-          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-            Esperado
-          </th>
-          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-            Contado
-          </th>
-          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-            Diferencia
-          </th>
-        </tr>
-      </thead>
-      <tbody className="bg-white divide-y divide-gray-200">
-        {filteredRegisters
-          .sort((a: CashRegisterType, b: CashRegisterType) => 
-            new Date(b.openedAt).getTime() - new Date(a.openedAt).getTime()
-          )
-          .map((register: CashRegisterType) => (
-          <tr key={register.id} className="hover:bg-gray-50">
-            <td className="px-4 py-4 whitespace-nowrap">
-              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                register.status === 'open' 
-                  ? 'bg-green-100 text-green-800'
-                  : 'bg-gray-100 text-gray-800'
-              }`}>
-                {register.status === 'open' ? 'Abierta' : 'Cerrada'}
-              </span>
-            </td>
-            <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
-              {getEmployeeName(register.employeeId)}
-            </td>
-            <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
-              {register.closingEmployeeId ? getEmployeeName(register.closingEmployeeId) : '-'}
-            </td>
-            <td className="px-4 py-4 whitespace-nowrap">
-              <div className="text-sm font-medium text-gray-900">{formatCurrency(register.openingAmount)}</div>
-              <div className="text-sm text-gray-500">{new Date(register.openedAt).toLocaleString()}</div>
-            </td>
-            <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
-              {register.closedAt ? new Date(register.closedAt).toLocaleString() : '-'}
-            </td>
-            <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
-              {register.expectedAmount ? formatCurrency(register.expectedAmount) : '-'}
-            </td>
-            <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
-              {register.closingAmount ? formatCurrency(register.closingAmount) : '-'}
-            </td>
-            <td className="px-4 py-4 whitespace-nowrap text-sm">
-              {register.difference !== undefined ? (
-                <span className={register.difference === 0 ? 'text-green-600' : register.difference > 0 ? 'text-blue-600' : 'text-red-600'}>
-                  {register.difference > 0 ? '+' : ''}{formatCurrency(register.difference)}
-                </span>
-              ) : '-'}
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  </div>
-
-  {filteredRegisters.length === 0 && (
-    <div className="text-center py-12">
-      <Calculator className="w-12 h-12 sm:w-16 sm:h-16 text-gray-300 mx-auto mb-4" />
-      <p className="text-gray-500 text-base sm:text-lg">No hay registros de caja en este rango de fechas</p>
-    </div>
-  )}
-</div>
 
       {/* Modal Abrir Caja */}
       {showOpenModal && (
@@ -549,7 +640,7 @@ export function CashRegister() {
         </div>
       )}
 
-      {/* 🟢 Modal Cerrar Caja - MODIFICADO */}
+      {/* Modal Cerrar Caja - MEJORADO */}
       {showCloseModal && currentRegister && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl max-w-md w-full mx-4 p-4 sm:p-6 max-h-[90vh] overflow-y-auto">
@@ -561,9 +652,23 @@ export function CashRegister() {
             </div>
 
             <div className="space-y-4">
-              {/* 🟢 NUEVO: Resumen detallado por tipo de pago */}
+              {/* Resumen detallado por tipo de pago - MEJORADO */}
               <div className="bg-gray-50 p-3 sm:p-4 rounded-lg space-y-3">
-                <h4 className="font-semibold text-gray-800 text-sm">Resumen del Turno</h4>
+                <h4 className="font-semibold text-gray-800 text-sm flex items-center">
+                  <TrendingUp className="w-4 h-4 mr-2" />
+                  Resumen del Turno
+                </h4>
+                
+                {/* 🟢 NUEVO: Total ingresos del turno */}
+                <div className="bg-blue-50 p-3 rounded border border-blue-200">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm font-medium text-blue-800">Total ingresos del turno:</span>
+                    <span className="text-lg font-bold text-blue-600">{formatCurrency(totalIngresosTurno)}</span>
+                  </div>
+                  <div className="text-xs text-blue-600 mt-1">
+                    Incluye {salesSinceOpen.length} ventas y {layawayPaymentsSinceOpen.length} abonos en todos los métodos de pago
+                  </div>
+                </div>
                 
                 {/* Efectivo */}
                 <div className="bg-white p-3 rounded border border-green-100">
@@ -574,8 +679,12 @@ export function CashRegister() {
                       <span>{formatCurrency(currentRegister.openingAmount)}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Ingresos:</span>
-                      <span className="text-blue-600">+{formatCurrency(ingresosEfectivoTurno)}</span>
+                      <span className="text-gray-600">Ventas:</span>
+                      <span className="text-blue-600">+{formatCurrency(ventasEfectivoTurno)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Abonos:</span>
+                      <span className="text-purple-600">+{formatCurrency(abonosEfectivoTurno)}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-600">Egresos:</span>
@@ -593,8 +702,12 @@ export function CashRegister() {
                   <h5 className="text-xs font-semibold text-blue-700 mb-2">OTROS MÉTODOS</h5>
                   <div className="space-y-1 text-sm">
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Ingresos:</span>
-                      <span className="text-blue-600">+{formatCurrency(ingresosOtrosTurno)}</span>
+                      <span className="text-gray-600">Ventas:</span>
+                      <span className="text-blue-600">+{formatCurrency(ventasOtrosTurno)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Abonos:</span>
+                      <span className="text-purple-600">+{formatCurrency(abonosOtrosTurno)}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-600">Egresos:</span>
@@ -642,7 +755,7 @@ export function CashRegister() {
                 <p className="text-xs text-gray-500 mt-1">Transferencias, tarjetas, etc.</p>
               </div>
 
-              {/* 🟢 NUEVO: Resumen de diferencias */}
+              {/* Resumen de diferencias */}
               {(closingCash > 0 || closingOther > 0) && (
                 <div className="bg-blue-50 p-3 rounded-lg space-y-2">
                   <div className="flex justify-between items-center text-sm">
