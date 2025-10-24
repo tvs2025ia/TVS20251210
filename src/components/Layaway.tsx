@@ -5,7 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { LocalImage } from './LocalImage';
 import { AgregarAbonoLayaway } from './AgregarAbonoLayaway';
 import { NuevoSeparadoModal } from './NuevoSeparadoModal';
-import { Product, LayawayItem, Layaway, LayawayPayment } from '../types';
+import { Product, LayawayItem, Layaway } from '../types';
 import {
   Search,
   Plus,
@@ -14,20 +14,16 @@ import {
   X,
   Package,
   User,
-  Calendar,
-  DollarSign,
-  Clock,
-  CheckCircle,
-  AlertCircle,
   Eye,
   CreditCard,
   FileText,
-  Menu,
+  CheckCircle,
+  AlertCircle,
   ShoppingCart
 } from 'lucide-react';
 
 export function LayawayComponent() {
-  const { products, customers, paymentMethods, layaways, addLayaway, addLayawayPayment } = useData();
+  const { products, customers, paymentMethods, layaways, addLayaway, deleteLayaway } = useData();
   const { currentStore } = useStore();
   const { user } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
@@ -41,6 +37,7 @@ export function LayawayComponent() {
   const [abonoLayaway, setAbonoLayaway] = useState<Layaway | null>(null);
   const [showCart, setShowCart] = useState(false);
   const [showCompleted, setShowCompleted] = useState(false);
+  const [isDeleting, setIsDeleting] = useState<string | null>(null);
 
   const storeProducts = React.useMemo(() => products.filter(p => p.storeId === currentStore?.id), [products, currentStore?.id]);
   const storeCustomers = React.useMemo(() => customers.filter(c => c.storeId === currentStore?.id), [customers, currentStore?.id]);
@@ -169,6 +166,41 @@ export function LayawayComponent() {
     alert('Separado creado exitosamente');
   };
 
+  const handleDeleteLayaway = async (layaway: Layaway) => {
+    // Solo permitir eliminar si está activo o cancelado
+    if (layaway.status === 'completed') {
+      alert('No se puede eliminar un separado completado. Los productos ya fueron entregados.');
+      return;
+    }
+  
+    const confirmed = window.confirm(
+      `¿Estás seguro de que quieres eliminar el separado de ${customers.find(c => c.id === layaway.customerId)?.name}?\n\n` +
+      `Total: ${formatCurrency(layaway.total)}\n` +
+      `Productos: ${layaway.items.length}\n\n` +
+      `El inventario será restaurado automáticamente.\n` +
+      `Esta acción no se puede deshacer.`
+    );
+  
+    if (confirmed) {
+      setIsDeleting(layaway.id);
+      try {
+        await deleteLayaway(layaway.id);
+        // Cerrar el modal si está abierto
+        if (viewingLayaway?.id === layaway.id) {
+          setViewingLayaway(null);
+        }
+        alert('Separado eliminado exitosamente. El inventario ha sido restaurado.');
+        // Pequeña animación de éxito
+        setTimeout(() => {
+          setIsDeleting(null);
+        }, 1000);
+      } catch (error) {
+        alert('Error al eliminar el separado: ' + (error instanceof Error ? error.message : 'Error desconocido'));
+        setIsDeleting(null);
+      }
+    }
+  };
+
   const ProductCard = ({ product }: { product: Product }) => (
     <div className="bg-white rounded-lg border border-gray-200 p-2 sm:p-3 md:p-4 hover:shadow-md transition-shadow">
       <LocalImage
@@ -285,16 +317,37 @@ export function LayawayComponent() {
 
                 {/* Add Payment Button */}
                 {updatedLayaway.status === 'active' && updatedLayaway.remainingBalance > 0 && (
-                  <button
-                    onClick={() => {
-                      setAbonoLayaway(layaway);
-                      setAbonoOpen(true);
-                    }}
-                    className="w-full bg-green-600 text-white py-2 sm:py-3 rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center space-x-2 text-sm sm:text-base"
-                  >
-                    <Plus className="w-4 h-4 sm:w-5 sm:h-5" />
-                    <span>Agregar Abono</span>
-                  </button>
+                  <div className="space-y-2">
+                    <button
+                      onClick={() => {
+                        setAbonoLayaway(layaway);
+                        setAbonoOpen(true);
+                      }}
+                      className="w-full bg-green-600 text-white py-2 sm:py-3 rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center space-x-2 text-sm sm:text-base"
+                    >
+                      <Plus className="w-4 h-4 sm:w-5 sm:h-5" />
+                      <span>Agregar Abono</span>
+                    </button>
+                    
+                    {/* Delete Button - Solo para separados activos */}
+                    <button
+                      onClick={() => handleDeleteLayaway(layaway)}
+                      disabled={isDeleting === layaway.id}
+                      className="w-full bg-red-600 text-white py-2 sm:py-3 rounded-lg hover:bg-red-700 transition-colors flex items-center justify-center space-x-2 text-sm sm:text-base disabled:bg-gray-300 disabled:cursor-not-allowed"
+                    >
+                      {isDeleting === layaway.id ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                          <span>Eliminando...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Trash2 className="w-4 h-4 sm:w-5 sm:h-5" />
+                          <span>Eliminar Separado</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
                 )}
               </div>
 
@@ -355,6 +408,7 @@ export function LayawayComponent() {
     );
   };
 
+  // Componente CartPanel movido fuera del componente principal
   const CartPanel = () => (
     <div className="bg-white border-l border-gray-200 flex flex-col h-full">
       <div className="p-4 sm:p-6 border-b border-gray-200">
@@ -601,23 +655,39 @@ export function LayawayComponent() {
                         ></div>
                       </div>
 
-                      <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2">
+                      <div className="space-y-2">
+                        <div className="flex space-x-2">
+                          <button
+                            onClick={() => setViewingLayaway(layaway)}
+                            className="flex-1 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center space-x-1 text-xs sm:text-sm"
+                          >
+                            <Eye className="w-3 h-3 sm:w-4 sm:h-4" />
+                            <span>Ver</span>
+                          </button>
+                          <button
+                            onClick={() => {
+                              setAbonoLayaway(layaway);
+                              setAbonoOpen(true);
+                            }}
+                            className="flex-1 bg-green-600 text-white py-2 rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center space-x-1 text-xs sm:text-sm"
+                          >
+                            <Plus className="w-3 h-3 sm:w-4 sm:h-4" />
+                            <span>Abonar</span>
+                          </button>
+                        </div>
                         <button
-                          onClick={() => setViewingLayaway(layaway)}
-                          className="flex-1 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center space-x-1 text-xs sm:text-sm"
+                          onClick={() => handleDeleteLayaway(layaway)}
+                          disabled={isDeleting === layaway.id}
+                          className="w-full bg-red-600 text-white py-1.5 rounded-lg hover:bg-red-700 transition-colors flex items-center justify-center space-x-1 text-xs sm:text-sm disabled:bg-gray-300 disabled:cursor-not-allowed"
                         >
-                          <Eye className="w-3 h-3 sm:w-4 sm:h-4" />
-                          <span>Ver</span>
-                        </button>
-                        <button
-                          onClick={() => {
-                            setAbonoLayaway(layaway);
-                            setAbonoOpen(true);
-                          }}
-                          className="flex-1 bg-green-600 text-white py-2 rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center space-x-1 text-xs sm:text-sm"
-                        >
-                          <Plus className="w-3 h-3 sm:w-4 sm:h-4" />
-                          <span>Abonar</span>
+                          {isDeleting === layaway.id ? (
+                            <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                          ) : (
+                            <>
+                              <Trash2 className="w-3 h-3 sm:w-4 sm:h-4" />
+                              <span>Eliminar</span>
+                            </>
+                          )}
                         </button>
                       </div>
                     </div>

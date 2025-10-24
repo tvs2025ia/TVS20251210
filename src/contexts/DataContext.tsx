@@ -64,6 +64,7 @@ interface DataContextType {
   addLayaway: (layaway: Layaway) => Promise<void>;
   updateLayaway: (layaway: Layaway) => Promise<void>;
   addLayawayPayment: (layawayId: string, payment: LayawayPayment) => Promise<void>;
+  deleteLayaway: (id: string) => Promise<void>;
   formatCurrency: (amount: number) => string;
   refreshData: () => Promise<void>;
   connectToDatabase: () => Promise<void>;
@@ -1183,6 +1184,58 @@ export function DataProvider({ children }: DataProviderProps) {
     }
   };
 
+  const deleteLayaway = async (id: string) => {
+    try {
+      // 🔍 Buscar el separado antes de eliminarlo
+      const layawayToDelete = layaways.find(l => l.id === id);
+      if (!layawayToDelete) {
+        throw new Error('Separado no encontrado');
+      }
+  
+      console.log('📦 Restaurando inventario en Supabase...');
+      
+      // 💾 PRIMERO: Actualizar stock en Supabase
+      const stockUpdates = layawayToDelete.items.map(async (item) => {
+        const product = products.find(p => p.id === item.productId);
+        if (product) {
+          const newStock = product.stock + item.quantity;
+          console.log(`  ↗️ ${product.name}: ${product.stock} → ${newStock} (+${item.quantity})`);
+          await SupabaseService.updateProductStock(item.productId, newStock);
+          return { productId: item.productId, newStock };
+        }
+        return null;
+      });
+      
+      const updatedStocks = await Promise.all(stockUpdates);
+      console.log('✅ Inventario restaurado en Supabase');
+  
+      // 🗑️ SEGUNDO: Eliminar el separado de Supabase
+      await SupabaseService.deleteLayaway(id);
+      console.log('✅ Separado eliminado de Supabase');
+      
+      // 🎨 TERCERO: Actualizar estado local (UI) basado en lo que se guardó
+      setProducts(prev => 
+        prev.map(product => {
+          const updated = updatedStocks.find(u => u?.productId === product.id);
+          if (updated) {
+            return { ...product, stock: updated.newStock };
+          }
+          return product;
+        })
+      );
+      
+      setLayaways(prev => prev.filter(l => l.id !== id));
+      
+      console.log('✅ Separado eliminado exitosamente');
+    } catch (error) {
+      console.error('❌ Error eliminando separado:', error);
+      // ♻️ Si algo falla, recargar TODO desde Supabase para garantizar consistencia
+      console.log('♻️ Recargando datos desde Supabase...');
+      await refreshData();
+      throw error;
+    }
+  };
+  
   // ===================== TRANSFERENCIAS =====================
   const addTransfer = async (transfer: Transfer) => {
     try {
@@ -1264,6 +1317,7 @@ export function DataProvider({ children }: DataProviderProps) {
     expenseCategories,
     receiptTemplates,
     layaways,
+    deleteLayaway,
     transfers,
     isLoading: isLoadingCombined,
     isConnected,

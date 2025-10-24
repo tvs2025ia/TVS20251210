@@ -908,6 +908,35 @@ static async deleteExpenseCategory(category: string): Promise<void> {
       return this.mapSupabaseToLayaway(data);
     }
 
+    static async deleteLayaway(id: string): Promise<void> {
+      try {
+        // Eliminar pagos del separado primero (por la restricción de clave foránea)
+        const { error: deletePaymentsError } = await supabase
+          .from('layaway_payments')
+          .delete()
+          .eq('layaway_id', id);
+        
+        if (deletePaymentsError && deletePaymentsError.code !== 'PGRST116') {
+          throw new Error(`Error deleting layaway payments: ${deletePaymentsError.message}`);
+        }
+    
+        // Eliminar el separado
+        const { error: deleteLayawayError } = await supabase
+          .from('layaways')
+          .delete()
+          .eq('id', id);
+        
+        if (deleteLayawayError) {
+          throw new Error(`Error deleting layaway: ${deleteLayawayError.message}`);
+        }
+    
+        console.log('✅ Separado eliminado de Supabase');
+      } catch (error) {
+        console.error('Error in deleteLayaway:', error);
+        throw error;
+      }
+    }
+
     static async addLayawayPayment(layawayId: string, payment: LayawayPayment): Promise<LayawayPayment> {
       const insertPayload = {
         id: payment.id,
