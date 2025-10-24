@@ -10,6 +10,8 @@ quieres que el usuario pueda ingresar a cualquiera de las tiendas, pero al inici
 login:
   Usa IndexedDB junto con supabase para el manejo de usuarios, eliminar usuarios mock, todos la informacion Mock
 
+  Ayudame a que esta pagina no use datos mock si no que todo funcione primero con supabase y luego si funcione con IndexedDB, corrige para que no guarde esos datos localhost y todo lo obtenga de supabase, elimina todos los datos mock.
+
 Compras
   Deseo que el costo del inventario se actualice usando el promedio ponderado.
 

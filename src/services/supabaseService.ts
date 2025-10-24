@@ -585,6 +585,91 @@ static async deleteTransfer(id: string): Promise<void> {
       return this.mapSupabaseToExpense(data);
     }
 
+// Expense Categories
+static async getAllExpenseCategories(storeId?: string): Promise<string[]> {
+  try {
+    const categoriesExists = await this.tableExists('expense_categories');
+    if (!categoriesExists) {
+      console.warn('Expense categories table does not exist');
+      return [];
+    }
+
+    let query = supabase
+      .from('expense_categories')
+      .select('name')
+      .eq('is_active', true);
+    
+    if (storeId) {
+      query = query.eq('store_id', storeId);
+    }
+    
+    const { data, error } = await query.order('name');
+    
+    if (error) {
+      console.error('Error fetching expense categories:', error);
+      return [];
+    }
+    
+    return (data || []).map(item => item.name);
+  } catch (error) {
+    console.error('Error in getAllExpenseCategories:', error);
+    return [];
+  }
+}
+
+static async saveExpenseCategory(category: string, storeId?: string): Promise<void> {
+  try {
+    const categoriesExists = await this.tableExists('expense_categories');
+    if (!categoriesExists) {
+      console.warn('Expense categories table does not exist');
+      return;
+    }
+
+    const { error } = await supabase
+      .from('expense_categories')
+      .upsert({
+        name: category,
+        store_id: storeId,
+        is_active: true
+      }, {
+        onConflict: 'name',
+        ignoreDuplicates: false
+      });
+    
+    if (error) throw new Error(`Error saving expense category: ${error.message}`);
+  } catch (error) {
+    console.error('Error in saveExpenseCategory:', error);
+    throw error;
+  }
+}
+
+static async deleteExpenseCategory(category: string): Promise<void> {
+  try {
+    const categoriesExists = await this.tableExists('expense_categories');
+    if (!categoriesExists) {
+      console.warn('Expense categories table does not exist');
+      return;
+    }
+
+    // Opción 1: Eliminar físicamente
+    const { error } = await supabase
+      .from('expense_categories')
+      .delete()
+      .eq('name', category);
+    
+    // Opción 2: O marcar como inactivo (recomendado)
+    // const { error } = await supabase
+    //   .from('expense_categories')
+    //   .update({ is_active: false })
+    //   .eq('name', category);
+    
+    if (error) throw new Error(`Error deleting expense category: ${error.message}`);
+  } catch (error) {
+    console.error('Error in deleteExpenseCategory:', error);
+    throw error;
+  }
+}    
+
     // Quotes
     static async getAllQuotes(storeId?: string): Promise<Quote[]> {
       try {

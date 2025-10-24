@@ -16,7 +16,6 @@ import {
   Edit3, 
   Trash2,
   X,
-  Check,
   Eye,
   EyeOff,
   Shield,
@@ -1382,10 +1381,14 @@ export function Admin() {
                     className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
                   <button
-                    onClick={() => {
+                    onClick={async () => {
                       if (newExpenseCategory.trim()) {
-                        addExpenseCategory(newExpenseCategory.trim());
-                        setNewExpenseCategory('');
+                        try {
+                          await addExpenseCategory(newExpenseCategory.trim());
+                          setNewExpenseCategory('');
+                        } catch (error) {
+                          alert('Error agregando categoría: ' + (error instanceof Error ? error.message : 'Error desconocido'));
+                        }
                       }
                     }}
                     className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2"
@@ -1401,9 +1404,13 @@ export function Admin() {
                   <div key={category} className="bg-gray-50 rounded-lg p-4 flex items-center justify-between">
                     <span className="font-medium text-gray-900">{category}</span>
                     <button
-                      onClick={() => {
+                      onClick={async () => {
                         if (window.confirm(`¿Eliminar categoría "${category}"?`)) {
-                          deleteExpenseCategory(category);
+                          try {
+                            await deleteExpenseCategory(category);
+                          } catch (error) {
+                            alert('Error eliminando categoría: ' + (error instanceof Error ? error.message : 'Error desconocido'));
+                          }
                         }
                       }}
                       className="text-red-600 hover:text-red-900"
@@ -1427,43 +1434,43 @@ export function Admin() {
 
       {/* ✅ Modales */}
       {showUserModal && (
-  <UserModal
-    onClose={() => setShowUserModal(false)}
-    onSave={async (user, allowedStores) => {
-      try {
-        await SupabaseService.saveUser(user);
-        if (user.role === 'employee' && allowedStores) {
-          await SupabaseService.updateUserStores(user.id, allowedStores);
-        }
-        await indexedDBService.saveUser(user, allowedStores);
-        addUser(user);
-        alert('Usuario creado exitosamente');
-      } catch (error) {
-        alert('Error: ' + (error instanceof Error ? error.message : 'Error desconocido'));
-      }
-    }}
-  />
-)}
+        <UserModal
+          onClose={() => setShowUserModal(false)}
+          onSave={async (user, allowedStores) => {
+            try {
+              await SupabaseService.saveUser(user);
+              if (user.role === 'employee' && allowedStores) {
+                await SupabaseService.updateUserStores(user.id, allowedStores);
+              }
+              await indexedDBService.saveUser(user, allowedStores);
+              addUser(user);
+              alert('Usuario creado exitosamente');
+            } catch (error) {
+              alert('Error: ' + (error instanceof Error ? error.message : 'Error desconocido'));
+            }
+          }}
+        />
+      )}
 
-{editingUser && (
-  <UserModal
-    user={editingUser}
-    onClose={() => setEditingUser(null)}
-    onSave={async (user, allowedStores) => {
-      try {
-        await SupabaseService.saveUser(user);
-        if (user.role === 'employee' && allowedStores) {
-          await SupabaseService.updateUserStores(user.id, allowedStores);
-        }
-        await indexedDBService.saveUser(user, allowedStores);
-        updateUser(user);
-        alert('Usuario actualizado exitosamente');
-      } catch (error) {
-        alert('Error: ' + (error instanceof Error ? error.message : 'Error desconocido'));
-      }
-    }}
-  />
-)}
+      {editingUser && (
+        <UserModal
+          user={editingUser}
+          onClose={() => setEditingUser(null)}
+          onSave={async (user, allowedStores) => {
+            try {
+              await SupabaseService.saveUser(user);
+              if (user.role === 'employee' && allowedStores) {
+                await SupabaseService.updateUserStores(user.id, allowedStores);
+              }
+              await indexedDBService.saveUser(user, allowedStores);
+              updateUser(user);
+              alert('Usuario actualizado exitosamente');
+            } catch (error) {
+              alert('Error: ' + (error instanceof Error ? error.message : 'Error desconocido'));
+            }
+          }}
+        />
+      )}
 
       {showStoreModal && (
         <StoreModal
@@ -1509,20 +1516,21 @@ export function Admin() {
           onSave={(supplier) => updateSupplier(supplier)}
         />
       )}
+
       {showPaymentModal && (
         <PaymentMethodModal
-        onClose={() => setShowPaymentModal(false)}
-        onSave={(payment) => addPaymentMethod(payment)}
+          onClose={() => setShowPaymentModal(false)}
+          onSave={(payment) => addPaymentMethod(payment)}
         />
-        )}
+      )}
 
       {editingPayment && (
         <PaymentMethodModal
-        payment={editingPayment}
-        onClose={() => setEditingPayment(null)}
-        onSave={(payment) => updatePaymentMethod(payment)}
+          payment={editingPayment}
+          onClose={() => setEditingPayment(null)}
+          onSave={(payment) => updatePaymentMethod(payment)}
         />
-        )}
+      )}
     </div>
   );
 }

@@ -1,10 +1,9 @@
-// src/components/Login.tsx - VERSION MULTI-TIENDA
+// src/components/Login.tsx - SUPABASE FIRST (Sin datos mock)
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useStore } from '../contexts/StoreContext';
 import { SupabaseService } from '../services/supabaseService';
-import { indexedDBService } from '../services/indexedDBService';
-import { Store, Eye, EyeOff, AlertCircle, RefreshCw, Check } from 'lucide-react';
+import { Store, Eye, EyeOff, AlertCircle, RefreshCw, Check, Wifi, WifiOff } from 'lucide-react';
 
 export function Login() {
   const [username, setUsername] = useState('');
@@ -14,71 +13,84 @@ export function Login() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [loadingStores, setLoadingStores] = useState(false);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
   const { login } = useAuth();
   const { stores, isLoading: storesLoading } = useStore();
   
-  // ✅ NUEVO: Tiendas filtradas según usuario
   const [availableStores, setAvailableStores] = useState<typeof stores>([]);
   const [userChecked, setUserChecked] = useState(false);
 
-  // ✅ Efecto para filtrar tiendas cuando cambia el usuario
+  // Monitor online/offline status
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+      console.log('✅ Conexión restaurada');
+    };
+    const handleOffline = () => {
+      setIsOnline(false);
+      console.log('⚠️ Sin conexión a internet');
+    };
+    
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  // Verificar tiendas disponibles cuando cambia el usuario
   useEffect(() => {
     const checkUserStores = async () => {
+      // Limpiar estados si no hay usuario o aún se están cargando las tiendas
       if (!username.trim() || storesLoading) {
-        setAvailableStores(stores);
+        setAvailableStores([]);
         setUserChecked(false);
+        setSelectedStoreId('');
         return;
       }
 
       setLoadingStores(true);
       setUserChecked(false);
+      setError('');
 
       try {
-        // Intentar obtener tiendas disponibles desde Supabase
-        const storeIds = await SupabaseService.getAvailableStoresForUser(username);
-        
-        if (storeIds.length > 0) {
-          // Filtrar tiendas disponibles
-          const filtered = stores.filter(s => storeIds.includes(s.id) && s.isActive);
-          setAvailableStores(filtered);
+        if (isOnline) {
+          // PRIORIDAD 1: Supabase - Obtener tiendas disponibles
+          console.log(`🔍 Verificando tiendas para usuario: ${username}`);
+          const storeIds = await SupabaseService.getAvailableStoresForUser(username);
           
-          // Auto-seleccionar si solo hay una tienda
-          if (filtered.length === 1) {
-            setSelectedStoreId(filtered[0].id);
-          }
-          
-          setUserChecked(true);
-          console.log(`✅ Usuario ${username} tiene acceso a ${filtered.length} tienda(s)`);
-        } else {
-          // Si no hay tiendas en Supabase, intentar con IndexedDB
-          try {
-            const localUser = await indexedDBService.getUser(username, '');
-            if (localUser) {
-              if (localUser.role === 'admin') {
-                setAvailableStores(stores.filter(s => s.isActive));
-              } else {
-                const userStores = await indexedDBService.getUserStores(localUser.id);
-                const filtered = stores.filter(s => userStores.includes(s.id) && s.isActive);
-                setAvailableStores(filtered);
-                
-                if (filtered.length === 1) {
-                  setSelectedStoreId(filtered[0].id);
-                }
-              }
-              setUserChecked(true);
-            } else {
-              // Usuario no encontrado, mostrar todas las tiendas
-              setAvailableStores(stores.filter(s => s.isActive));
+          if (storeIds.length > 0) {
+            // Filtrar tiendas disponibles y activas
+            const filtered = stores.filter(s => storeIds.includes(s.id) && s.isActive);
+            setAvailableStores(filtered);
+            
+            // Auto-seleccionar si solo hay una tienda
+            if (filtered.length === 1) {
+              setSelectedStoreId(filtered[0].id);
+              console.log(`✅ Auto-seleccionada tienda: ${filtered[0].name}`);
             }
-          } catch (localError) {
-            console.warn('Error buscando usuario en IndexedDB:', localError);
-            setAvailableStores(stores.filter(s => s.isActive));
+            
+            setUserChecked(true);
+            console.log(`✅ Usuario tiene acceso a ${filtered.length} tienda(s) [Supabase]`);
+          } else {
+            // Usuario no encontrado o sin tiendas
+            setAvailableStores([]);
+            setUserChecked(true);
+            console.log('⚠️ Usuario no encontrado o sin tiendas asignadas en Supabase');
           }
+        } else {
+          // OFFLINE: No podemos verificar las tiendas sin conexión
+          // El usuario deberá haber iniciado sesión antes al menos una vez
+          setAvailableStores([]);
+          setUserChecked(true);
+          console.log('⚠️ Modo offline - no se pueden verificar tiendas. Debe haber una sesión previa.');
         }
       } catch (error) {
-        console.warn('Error obteniendo tiendas del usuario:', error);
-        // En caso de error, mostrar todas las tiendas
-        setAvailableStores(stores.filter(s => s.isActive));
+        console.error('❌ Error obteniendo tiendas del usuario:', error);
+        setAvailableStores([]);
+        setUserChecked(true);
       } finally {
         setLoadingStores(false);
       }
@@ -87,12 +99,18 @@ export function Login() {
     // Debounce: esperar 500ms después de que el usuario deje de escribir
     const timeoutId = setTimeout(checkUserStores, 500);
     return () => clearTimeout(timeoutId);
-  }, [username, stores, storesLoading]);
+  }, [username, stores, storesLoading, isOnline]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!username || !password || !selectedStoreId) {
-      setError('Por favor completa todos los campos');
+    
+    if (!username || !password) {
+      setError('Por favor ingresa usuario y contraseña');
+      return;
+    }
+
+    if (!selectedStoreId) {
+      setError('Por favor selecciona una tienda');
       return;
     }
 
@@ -100,19 +118,22 @@ export function Login() {
     setError('');
 
     try {
+      console.log('🔐 Intentando login:', { username, storeId: selectedStoreId });
       const success = await login(username, password, selectedStoreId);
+      
       if (!success) {
         setError('Credenciales incorrectas o no tienes acceso a esta tienda');
+        console.log('❌ Login fallido');
       }
     } catch (err) {
-      setError('Error al iniciar sesión');
+      console.error('❌ Error en login:', err);
+      setError('Error al iniciar sesión. Por favor intenta nuevamente.');
     } finally {
       setLoading(false);
     }
   };
 
-  // ✅ Determinar qué tiendas mostrar
-  const displayStores = availableStores.length > 0 ? availableStores : stores.filter(s => s.isActive);
+  const displayStores = availableStores;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
@@ -126,23 +147,34 @@ export function Login() {
           <p className="text-gray-600 mt-2">Ingresa a tu cuenta</p>
         </div>
 
-        {/* Demo credentials info */}
-        <div className="mb-6 p-4 bg-blue-50 rounded-lg">
-          <h3 className="font-medium text-blue-900 mb-2">Credenciales de prueba:</h3>
-          <div className="text-sm text-blue-700 space-y-1">
-            <div><strong>Admin:</strong> admin / 123456 (todas las tiendas)</div>
-            <div><strong>Empleado:</strong> empleado1 / 123456</div>
-          </div>
+        {/* Estado de conexión */}
+        <div className={`mb-4 p-3 rounded-lg flex items-center ${
+          isOnline 
+            ? 'bg-green-50 border border-green-200' 
+            : 'bg-orange-50 border border-orange-200'
+        }`}>
+          {isOnline ? (
+            <>
+              <Wifi className="w-4 h-4 text-green-600 mr-2 flex-shrink-0" />
+              <span className="text-sm text-green-700">Conectado a Supabase</span>
+            </>
+          ) : (
+            <>
+              <WifiOff className="w-4 h-4 text-orange-600 mr-2 flex-shrink-0" />
+              <span className="text-sm text-orange-700">Modo offline - requiere sesión previa</span>
+            </>
+          )}
         </div>
 
         {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-center">
-            <AlertCircle className="w-5 h-5 text-red-500 mr-2 flex-shrink-0" />
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start">
+            <AlertCircle className="w-5 h-5 text-red-500 mr-2 flex-shrink-0 mt-0.5" />
             <span className="text-red-700 text-sm">{error}</span>
           </div>
         )}
 
         <form onSubmit={handleSubmit} className="space-y-6">
+          {/* Usuario */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Usuario *
@@ -150,20 +182,31 @@ export function Login() {
             <input
               type="text"
               value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              onChange={(e) => {
+                setUsername(e.target.value);
+                setError('');
+              }}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
               placeholder="Ingresa tu usuario"
               disabled={loading}
               required
+              autoComplete="username"
             />
-            {userChecked && username && (
+            {userChecked && username && availableStores.length > 0 && (
               <p className="text-xs text-green-600 mt-1 flex items-center">
-                <Check className="w-3 h-3 mr-1" />
+                <Check className="w-3 h-3 mr-1 flex-shrink-0" />
                 {availableStores.length} tienda(s) disponible(s)
+              </p>
+            )}
+            {userChecked && username && availableStores.length === 0 && isOnline && (
+              <p className="text-xs text-red-600 mt-1 flex items-center">
+                <AlertCircle className="w-3 h-3 mr-1 flex-shrink-0" />
+                Usuario no encontrado o sin tiendas asignadas
               </p>
             )}
           </div>
 
+          {/* Contraseña */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Contraseña *
@@ -172,22 +215,28 @@ export function Login() {
               <input
                 type={showPassword ? 'text' : 'password'}
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  setError('');
+                }}
+                className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
                 placeholder="Ingresa tu contraseña"
                 disabled={loading}
                 required
+                autoComplete="current-password"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                tabIndex={-1}
               >
                 {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
               </button>
             </div>
           </div>
 
+          {/* Tienda */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Tienda *
@@ -203,15 +252,20 @@ export function Login() {
               <>
                 <select
                   value={selectedStoreId}
-                  onChange={(e) => setSelectedStoreId(e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  disabled={loading || displayStores.length === 0}
+                  onChange={(e) => {
+                    setSelectedStoreId(e.target.value);
+                    setError('');
+                  }}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                  disabled={loading || displayStores.length === 0 || !username}
                   required
                 >
                   <option value="">
-                    {displayStores.length === 0 
-                      ? 'No hay tiendas disponibles'
-                      : 'Selecciona una tienda'
+                    {!username 
+                      ? 'Primero ingresa tu usuario'
+                      : displayStores.length === 0 
+                        ? 'No hay tiendas disponibles'
+                        : 'Selecciona una tienda'
                     }
                   </option>
                   {displayStores.map(store => (
@@ -221,30 +275,37 @@ export function Login() {
                   ))}
                 </select>
                 
-                {username && userChecked && availableStores.length > 0 && availableStores.length < stores.length && (
+                {username && userChecked && availableStores.length > 0 && (
                   <p className="text-xs text-blue-600 mt-1">
-                    Mostrando solo tus tiendas asignadas ({availableStores.length} de {stores.length})
+                    Mostrando {availableStores.length} tienda(s) asignada(s)
                   </p>
                 )}
               </>
             )}
             
-            {displayStores.length === 0 && !storesLoading && !loadingStores && (
+            {displayStores.length === 0 && !storesLoading && !loadingStores && userChecked && username && isOnline && (
               <div className="mt-2 p-3 bg-orange-50 border border-orange-200 rounded-lg">
-                <p className="text-sm text-orange-800 flex items-center">
-                  <AlertCircle className="w-4 h-4 mr-2 flex-shrink-0" />
-                  {username 
-                    ? 'No tienes tiendas asignadas. Contacta al administrador.'
-                    : 'No hay tiendas disponibles. Contacta al administrador.'
-                  }
+                <p className="text-sm text-orange-800 flex items-start">
+                  <AlertCircle className="w-4 h-4 mr-2 flex-shrink-0 mt-0.5" />
+                  <span>No tienes tiendas asignadas. Contacta al administrador para obtener acceso.</span>
+                </p>
+              </div>
+            )}
+
+            {!isOnline && (
+              <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-sm text-blue-800 flex items-start">
+                  <AlertCircle className="w-4 h-4 mr-2 flex-shrink-0 mt-0.5" />
+                  <span>Modo offline: solo puedes iniciar sesión si lo has hecho antes en este dispositivo.</span>
                 </p>
               </div>
             )}
           </div>
 
+          {/* Botón de login */}
           <button
             type="submit"
-            disabled={loading || displayStores.length === 0}
+            disabled={loading || (!isOnline && !username) || (isOnline && displayStores.length === 0 && userChecked)}
             className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium flex items-center justify-center"
           >
             {loading ? (
@@ -258,14 +319,15 @@ export function Login() {
           </button>
         </form>
 
+        {/* Footer */}
         <div className="mt-8 pt-6 border-t border-gray-200">
           <div className="text-center space-y-2">
             <p className="text-xs text-gray-500">
               Sistema POS Multi-tienda v2.0
             </p>
             <div className="flex items-center justify-center space-x-2 text-xs text-gray-400">
-              <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-              <span>Modo online/offline</span>
+              <div className={`w-2 h-2 rounded-full ${isOnline ? 'bg-green-500' : 'bg-orange-500'}`}></div>
+              <span>{isOnline ? 'Online' : 'Offline'} - Supabase First</span>
             </div>
           </div>
         </div>

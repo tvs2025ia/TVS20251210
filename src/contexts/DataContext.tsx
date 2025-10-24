@@ -327,6 +327,17 @@ export function DataProvider({ children }: DataProviderProps) {
       } catch (error) {
         console.warn('⚠️ Error cargando plantillas de recibo:', error);
       }
+      // Cargar categorías de egresos
+      setLoadingProgress(prev => ({ ...prev, secondary: 98 }));
+      try {
+        const categoriesResult = await SupabaseService.getAllExpenseCategories(user.storeId);
+        if (categoriesResult.length > 0) {
+          setExpenseCategories(categoriesResult);
+          console.log(`✅ Categorías de egresos cargadas: ${categoriesResult.length}`);
+        }
+      } catch (error) {
+        console.warn('⚠️ Error cargando categorías de egresos:', error);
+      }
 
       setLoadingProgress(prev => ({ ...prev, secondary: 100 }));
       setSecondaryDataLoaded(true);
@@ -877,14 +888,39 @@ export function DataProvider({ children }: DataProviderProps) {
   };
 
   // ===================== CATEGORÍAS DE GASTOS =====================
-  const addExpenseCategory = (category: string) => {
-    if (!expenseCategories.includes(category)) {
-      setExpenseCategories(prev => [...prev, category].sort());
+  const addExpenseCategory = async (category: string) => {
+    if (!category.trim()) return;
+    
+    try {
+      await SupabaseService.saveExpenseCategory(category.trim(), user?.storeId);
+      
+      // Actualizar estado local evitando duplicados
+      setExpenseCategories(prev => {
+        const newCategories = [...prev, category.trim()].filter((value, index, self) => 
+          self.indexOf(value) === index
+        ).sort();
+        return newCategories;
+      });
+      
+      console.log('✅ Categoría de egreso guardada en Supabase:', category);
+    } catch (error) {
+      console.error('❌ Error guardando categoría de egreso:', error);
+      throw error;
     }
   };
-
-  const deleteExpenseCategory = (category: string) => {
-    setExpenseCategories(prev => prev.filter(c => c !== category));
+  
+  const deleteExpenseCategory = async (category: string) => {
+    try {
+      await SupabaseService.deleteExpenseCategory(category);
+      
+      // Actualizar estado local
+      setExpenseCategories(prev => prev.filter(c => c !== category));
+      
+      console.log('✅ Categoría de egreso eliminada:', category);
+    } catch (error) {
+      console.error('❌ Error eliminando categoría de egreso:', error);
+      throw error;
+    }
   };
 
   // ===================== PLANTILLAS DE RECIBO =====================
