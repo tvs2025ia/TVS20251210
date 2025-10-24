@@ -1099,45 +1099,72 @@ export function DataProvider({ children }: DataProviderProps) {
     setCashMovements(prev => [...prev, movement]);
   };
 
-  // ===================== SEPARADOS / LAYAWAYS =====================
-  const addLayaway = async (layaway: Layaway) => {
-    const normalizedLayaway = {
-      ...layaway,
-      storeId: layaway.storeId || user?.storeId || DEFAULT_STORE_ID
-    };
+// ===================== SEPARADOS / LAYAWAYS =====================
+const addLayaway = async (layaway: Layaway) => {
+  const normalizedLayaway = {
+    ...layaway,
+    storeId: layaway.storeId || user?.storeId || DEFAULT_STORE_ID
+  };
+  
+  try {
+    console.log('📦 Iniciando descuento de stock para separado...');
     
-    try {
-      const savedLayaway = await SupabaseService.saveLayaway(normalizedLayaway);
-      setLayaways(prev => [...prev, savedLayaway]);
-      
-      // Actualizar stock de productos
-      normalizedLayaway.items.forEach(item => {
-        setProducts(prev => 
-          prev.map(p => 
-            p.id === item.productId 
-              ? { ...p, stock: p.stock - item.quantity }
-              : p
-          )
-        );
-      });
-      
-      console.log('✅ Separado guardado');
-    } catch (error) {
-      console.error('❌ Error guardando separado:', error);
-      throw error;
-    }
-  };
+    // ✅ PRIMERO: Descontar stock en Supabase
+    const stockUpdates = new Map<string, number>();
+    normalizedLayaway.items.forEach(item => {
+      const product = products.find(p => p.id === item.productId);
+      if (product) {
+        const newStock = Math.max(0, product.stock - item.quantity);
+        stockUpdates.set(item.productId, newStock);
+        console.log(`  📦 ${product.name}: ${product.stock} → ${newStock} (-${item.quantity})`);
+      }
+    });
 
-  const updateLayaway = async (updatedLayaway: Layaway) => {
-    try {
-      const savedLayaway = await SupabaseService.saveLayaway(updatedLayaway);
-      setLayaways(prev => prev.map(l => l.id === savedLayaway.id ? savedLayaway : l));
-      console.log('✅ Separado actualizado');
-    } catch (error) {
-      console.error('❌ Error actualizando separado:', error);
-      throw error;
-    }
-  };
+    // ✅ Actualizar stock en Supabase
+    console.log(`🔄 Actualizando stock de ${stockUpdates.size} productos en Supabase...`);
+    await Promise.all(
+      Array.from(stockUpdates.entries()).map(([productId, stock]) =>
+        SupabaseService.updateProductStock(productId, stock)
+      )
+    );
+    console.log('✅ Stock actualizado en Supabase');
+
+    // ✅ SEGUNDO: Guardar el separado en Supabase
+    const savedLayaway = await SupabaseService.saveLayaway(normalizedLayaway);
+    setLayaways(prev => [...prev, savedLayaway]);
+
+    // ✅ TERCERO: Actualizar estado local de productos
+    setProducts(prev => {
+      const updated = prev.map(p => {
+        const newStock = stockUpdates.get(p.id);
+        if (newStock !== undefined) {
+          return { ...p, stock: newStock };
+        }
+        return p;
+      });
+      console.log(`✅ Productos actualizados en estado local`);
+      return updated;
+    });
+    
+    console.log('✅ Separado creado y stock descontado exitosamente');
+    
+  } catch (error) {
+    console.error('❌ Error guardando separado:', error);
+    throw error;
+  }
+};
+
+// ===================== ACTUALIZAR SEPARADO =====================
+const updateLayaway = async (updatedLayaway: Layaway) => {
+  try {
+    const savedLayaway = await SupabaseService.saveLayaway(updatedLayaway);
+    setLayaways(prev => prev.map(l => l.id === savedLayaway.id ? savedLayaway : l));
+    console.log('✅ Separado actualizado en Supabase con descuento:', savedLayaway.discount);
+  } catch (error) {
+    console.error('❌ Error actualizando separado:', error);
+    throw error;
+  }
+};
 
   const addLayawayPayment = async (layawayId: string, payment: LayawayPayment) => {
     try {
@@ -1318,6 +1345,7 @@ export function DataProvider({ children }: DataProviderProps) {
     receiptTemplates,
     layaways,
     deleteLayaway,
+    updateLayaway,
     transfers,
     isLoading: isLoadingCombined,
     isConnected,
@@ -1358,7 +1386,6 @@ export function DataProvider({ children }: DataProviderProps) {
     closeCashRegister,
     addCashMovement,
     addLayaway,
-    updateLayaway,
     addLayawayPayment,
     formatCurrency,
     refreshData,
