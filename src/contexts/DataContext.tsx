@@ -470,22 +470,53 @@ export function DataProvider({ children }: DataProviderProps) {
     };
     
     try {
-      // Guardar en Supabase primero
-      await SupabaseService.saveSale(normalized);
-      setSales(prev => [normalized, ...prev]);
+      console.log('💾 Guardando venta en Supabase...', normalized.invoiceNumber);
       
-      // Actualizar stock de productos
-      setProducts(prev => 
-        prev.map(p => {
-          const saleItem = normalized.items.find(item => item.productId === p.id);
-          if (saleItem) {
-            return { ...p, stock: p.stock - saleItem.quantity };
+      // 1. Guardar venta en Supabase
+      await SupabaseService.saveSale(normalized);
+      console.log('✅ Venta guardada en Supabase');
+      
+      // 2. Calcular actualizaciones de stock
+      const stockUpdates = new Map<string, number>();
+      normalized.items.forEach(item => {
+        const product = products.find(p => p.id === item.productId);
+        if (product) {
+          const newStock = Math.max(0, product.stock - item.quantity);
+          stockUpdates.set(item.productId, newStock);
+          console.log(`📦 Producto ${product.name}: ${product.stock} → ${newStock}`);
+        }
+      });
+
+      // 3. Actualizar stock en Supabase
+      console.log(`🔄 Actualizando stock de ${stockUpdates.size} productos en Supabase...`);
+      await Promise.all(
+        Array.from(stockUpdates.entries()).map(([productId, stock]) =>
+          SupabaseService.updateProductStock(productId, stock)
+        )
+      );
+      console.log('✅ Stock actualizado en Supabase');
+
+      // 4. CRÍTICO: Actualizar estado local de ventas
+      setSales(prev => {
+        const updated = [normalized, ...prev];
+        console.log(`✅ Ventas actualizadas en estado local: ${updated.length} ventas`);
+        return updated;
+      });
+      
+      // 5. CRÍTICO: Actualizar estado local de productos
+      setProducts(prev => {
+        const updated = prev.map(p => {
+          const newStock = stockUpdates.get(p.id);
+          if (newStock !== undefined) {
+            return { ...p, stock: newStock };
           }
           return p;
-        })
-      );
+        });
+        console.log(`✅ Productos actualizados en estado local`);
+        return updated;
+      });
 
-      // Crear movimiento de caja
+      // 6. Crear movimiento de caja
       const cashMovement: CashMovement = {
         id: crypto.randomUUID(),
         storeId: normalized.storeId,
@@ -498,10 +529,20 @@ export function DataProvider({ children }: DataProviderProps) {
       };
       setCashMovements(prev => [...prev, cashMovement]);
 
-      console.log('✅ Venta guardada en Supabase:', normalized.invoiceNumber);
+      console.log('✅ Venta procesada completamente:', normalized.invoiceNumber);
       
-      // Guardar en IndexedDB como respaldo
+      // 7. Guardar en IndexedDB como respaldo
       await OfflineService.saveSaleOffline(normalized);
+      
+      const updatedProducts = Array.from(stockUpdates.entries()).map(([productId, newStock]) => {
+        const product = products.find(p => p.id === productId);
+        return product ? { ...product, stock: newStock } : null;
+      }).filter(p => p !== null) as Product[];
+      
+      if (updatedProducts.length > 0) {
+        await OfflineService.saveProductsOffline(updatedProducts);
+      }
+      
     } catch (error) {
       console.error('❌ Error guardando venta:', error);
       throw error;

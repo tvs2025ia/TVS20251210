@@ -107,30 +107,20 @@ export class OfflineService {
   static async saveSaleOffline(sale: Sale): Promise<void> {
     try {
       const db = await this.getDB();
-      const tx = db.transaction(['sales', 'sync_queue'], 'readwrite');
+      const tx = db.transaction(['sales'], 'readwrite');
       const salesStore = tx.objectStore('sales');
-      const queueStore = tx.objectStore('sync_queue');
 
+      // Solo guardar en IndexedDB como respaldo, NO agregar a sync_queue
       salesStore.put(sale);
-
-      queueStore.put({
-        id: crypto.randomUUID(),
-        type: 'sale',
-        data: sale,
-        priority: 1,
-        retries: 0,
-        createdAt: new Date(),
-        updatedAt: new Date()
-      });
 
       await new Promise<void>((resolve, reject) => {
         tx.oncomplete = () => resolve();
         tx.onerror = () => reject(tx.error);
       });
 
-      console.log('✅ Venta guardada offline:', sale.id);
+      console.log('✅ Venta guardada en IndexedDB (respaldo):', sale.id);
     } catch (error) {
-      console.error('Error guardando venta offline:', error);
+      console.error('Error guardando venta en IndexedDB:', error);
       throw error;
     }
   }
@@ -139,30 +129,20 @@ export class OfflineService {
   static async saveExpenseOffline(expense: Expense): Promise<void> {
     try {
       const db = await this.getDB();
-      const tx = db.transaction(['expenses', 'sync_queue'], 'readwrite');
+      const tx = db.transaction(['expenses'], 'readwrite');
       const expensesStore = tx.objectStore('expenses');
-      const queueStore = tx.objectStore('sync_queue');
 
+      // Solo guardar en IndexedDB como respaldo, NO agregar a sync_queue
       expensesStore.put(expense);
-
-      queueStore.put({
-        id: crypto.randomUUID(),
-        type: 'expense',
-        data: expense,
-        priority: 1,
-        retries: 0,
-        createdAt: new Date(),
-        updatedAt: new Date()
-      });
 
       await new Promise<void>((resolve, reject) => {
         tx.oncomplete = () => resolve();
         tx.onerror = () => reject(tx.error);
       });
 
-      console.log('✅ Gasto guardado offline:', expense.id);
+      console.log('✅ Gasto guardado en IndexedDB (respaldo):', expense.id);
     } catch (error) {
-      console.error('Error guardando gasto offline:', error);
+      console.error('Error guardando gasto en IndexedDB:', error);
       throw error;
     }
   }

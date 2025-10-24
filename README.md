@@ -12,3 +12,5 @@ login:
 
 Compras
   Deseo que el costo del inventario se actualice usando el promedio ponderado.
+
+  
